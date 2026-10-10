@@ -60,12 +60,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Cho phép truy cập không cần token các API xác thực
                         .requestMatchers("/api/auth/**").permitAll()
-                        // Cho phép nghe nhạc và xem danh sách bài hát công khai
-                        .requestMatchers(HttpMethod.GET, "/api/songs/**").permitAll()
                         // Cho phép truy cập H2 Console khi phát triển
                         .requestMatchers("/h2-console", "/h2-console/**").permitAll()
-                        // Cho phép trang gốc, trang lỗi và favicon
-                        .requestMatchers("/", "/error", "/favicon.ico").permitAll()
+                        // Cho phép trang web giao diện, tài nguyên tĩnh, favicon và api status
+                        .requestMatchers("/", "/index.html", "/error", "/favicon.ico", "/css/**", "/js/**", "/images/**", "/api/status").permitAll()
                         // Các request khác (như upload nhạc, sửa, xóa, thông tin cá nhân) cần đăng nhập
                         .anyRequest().authenticated()
                 )

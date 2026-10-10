@@ -2,7 +2,6 @@ package com.example.musicstream.controller;
 
 import com.example.musicstream.model.Song;
 import com.example.musicstream.model.User;
-import com.example.musicstream.repository.SongRepository;
 import com.example.musicstream.security.UserPrincipal;
 import com.example.musicstream.service.SongService;
 import org.springframework.core.io.FileSystemResource;
@@ -21,11 +20,9 @@ import java.util.List;
 public class SongController {
 
     private final SongService songService;
-    private final SongRepository songRepository;
 
-    public SongController(SongService songService, SongRepository songRepository) {
+    public SongController(SongService songService) {
         this.songService = songService;
-        this.songRepository = songRepository;
     }
 
     @PostMapping("/upload")
@@ -33,20 +30,49 @@ public class SongController {
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "title", required = false) String title,
             @RequestParam(value = "artist", required = false) String artist,
+            @RequestParam(value = "album", required = false) String album,
             @AuthenticationPrincipal UserPrincipal principal
     ) throws Exception {
-        User uploader = principal != null ? principal.getUser() : null;
-        Song savedSong = songService.uploadSong(file, title, artist, uploader);
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        Song savedSong = songService.uploadSong(file, title, artist, album, principal.getUser());
         return ResponseEntity.status(HttpStatus.CREATED).body(savedSong);
+    }
+
+    @GetMapping("/cover/{id}")
+    public ResponseEntity<Resource> getSongCover(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserPrincipal principal
+    ) throws IOException {
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        Song song = songService.getSongByIdForUser(id, principal.getUser());
+        if (song.getCoverPath() != null && java.nio.file.Files.exists(java.nio.file.Paths.get(song.getCoverPath()))) {
+            Resource resource = new FileSystemResource(song.getCoverPath());
+            MediaType mediaType = MediaTypeFactory.getMediaType(resource).orElse(MediaType.IMAGE_JPEG);
+            return ResponseEntity.ok()
+                    .cacheControl(CacheControl.maxAge(7, java.util.concurrent.TimeUnit.DAYS))
+                    .contentType(mediaType)
+                    .body(resource);
+        }
+        return ResponseEntity.notFound().build();
     }
 
     @GetMapping("/stream/{id}")
     public ResponseEntity<ResourceRegion> streamSong(
             @PathVariable Long id,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            @AuthenticationPrincipal UserPrincipal principal
     ) throws IOException {
-        Song song = songRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy bài hát"));
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        // Kiểm tra quyền sở hữu bài hát trong kho riêng
+        Song song = songService.getSongByIdForUser(id, principal.getUser());
 
         Resource audioResource = new FileSystemResource(song.getFilePath());
         long contentLength = audioResource.contentLength();
@@ -61,36 +87,46 @@ public class SongController {
             long end = range.getRangeEnd(contentLength);
             long rangeLength = Math.min(chunkSize, end - start + 1);
             region = new ResourceRegion(audioResource, start, rangeLength);
-            return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
-                    .contentType(MediaTypeFactory.getMediaType(audioResource).orElse(MediaType.APPLICATION_OCTET_STREAM))
-                    .body(region);
         } else {
             long rangeLength = Math.min(chunkSize, contentLength);
             region = new ResourceRegion(audioResource, 0, rangeLength);
-            return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
-                    .contentType(MediaTypeFactory.getMediaType(audioResource).orElse(MediaType.APPLICATION_OCTET_STREAM))
-                    .body(region);
         }
+
+        MediaType mediaType;
+        if (song.getContentType() != null && !song.getContentType().isBlank()) {
+            try {
+                mediaType = MediaType.parseMediaType(song.getContentType());
+            } catch (Exception e) {
+                mediaType = MediaTypeFactory.getMediaType(audioResource).orElse(MediaType.APPLICATION_OCTET_STREAM);
+            }
+        } else {
+            mediaType = MediaTypeFactory.getMediaType(audioResource).orElse(MediaType.APPLICATION_OCTET_STREAM);
+        }
+
+        return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
+                .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                .contentType(mediaType)
+                .body(region);
     }
 
     @GetMapping
-    public ResponseEntity<List<Song>> getAllSongs() {
-        return ResponseEntity.ok(songService.getAllSongs());
+    public ResponseEntity<List<Song>> getMySongs(@AuthenticationPrincipal UserPrincipal principal) {
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        // Kho nhạc riêng biệt: Chỉ trả về danh sách bài hát của chính người dùng này
+        return ResponseEntity.ok(songService.getSongsByUploader(principal.getId()));
     }
 
-    @GetMapping("/my-songs")
-    public ResponseEntity<List<Song>> getMySongs(
+    @GetMapping("/{id}")
+    public ResponseEntity<Song> getSongById(
+            @PathVariable Long id,
             @AuthenticationPrincipal UserPrincipal principal
     ) {
         if (principal == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        return ResponseEntity.ok(songService.getSongsByUploader(principal.getId()));
-    }
-
-    @GetMapping("/{id}")
-    public ResponseEntity<Song> getSongById(@PathVariable Long id) {
-        return ResponseEntity.ok(songService.getSongById(id));
+        return ResponseEntity.ok(songService.getSongByIdForUser(id, principal.getUser()));
     }
 
     @DeleteMapping("/{id}")

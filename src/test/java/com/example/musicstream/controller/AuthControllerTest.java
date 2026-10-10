@@ -25,12 +25,21 @@ class AuthControllerTest {
     @Autowired
     private WebApplicationContext context;
 
+    @Autowired
+    private com.example.musicstream.repository.UserRepository userRepository;
+
+    @Autowired
+    private com.example.musicstream.repository.SongRepository songRepository;
+
     private MockMvc mockMvc;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
+        songRepository.deleteAll();
+        userRepository.deleteAll();
+
         mockMvc = MockMvcBuilders
                 .webAppContextSetup(context)
                 .apply(SecurityMockMvcConfigurers.springSecurity())

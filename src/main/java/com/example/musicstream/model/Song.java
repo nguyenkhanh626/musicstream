@@ -28,6 +28,11 @@ public class Song {
     private String storageFileName;
     private String filePath;
     private Long fileSize;
+    private String format;
+    private String contentType;
+    private String album;
+    private String coverPath;
+    private Boolean hasCover;
 
     private LocalDateTime uploadedAt;
 
@@ -61,6 +66,21 @@ public class Song {
 
     public LocalDateTime getUploadedAt() { return uploadedAt; }
     public void setUploadedAt(LocalDateTime uploadedAt) { this.uploadedAt = uploadedAt; }
+
+    public String getFormat() { return format; }
+    public void setFormat(String format) { this.format = format; }
+
+    public String getContentType() { return contentType; }
+    public void setContentType(String contentType) { this.contentType = contentType; }
+
+    public String getAlbum() { return album; }
+    public void setAlbum(String album) { this.album = album; }
+
+    public String getCoverPath() { return coverPath; }
+    public void setCoverPath(String coverPath) { this.coverPath = coverPath; }
+
+    public Boolean getHasCover() { return hasCover; }
+    public void setHasCover(Boolean hasCover) { this.hasCover = hasCover; }
 
     public User getUploader() { return uploader; }
     public void setUploader(User uploader) { this.uploader = uploader; }

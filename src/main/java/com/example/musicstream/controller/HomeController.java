@@ -9,12 +9,12 @@ import java.util.Map;
 @RestController
 public class HomeController {
 
-    @GetMapping("/")
-    public ResponseEntity<Map<String, Object>> home() {
+    @GetMapping("/api/status")
+    public ResponseEntity<Map<String, Object>> status() {
         return ResponseEntity.ok(Map.of(
                 "status", "RUNNING",
                 "message", "Hệ thống Music Streaming Backend đang hoạt động!",
-                "h2_console", "http://localhost:8080/h2-console",
+                "h2_console", "http://localhost:8080/h2-console/",
                 "apis", Map.of(
                         "register", "POST /api/auth/register",
                         "login", "POST /api/auth/login",
