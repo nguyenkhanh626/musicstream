@@ -30,4 +30,38 @@ public class Song {
     private Long fileSize;
 
     private LocalDateTime uploadedAt;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "user_id")
+    private User uploader;
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
+
+    public String getArtist() { return artist; }
+    public void setArtist(String artist) { this.artist = artist; }
+
+    public Long getDurationInSeconds() { return durationInSeconds; }
+    public void setDurationInSeconds(Long durationInSeconds) { this.durationInSeconds = durationInSeconds; }
+
+    public String getOriginalFileName() { return originalFileName; }
+    public void setOriginalFileName(String originalFileName) { this.originalFileName = originalFileName; }
+
+    public String getStorageFileName() { return storageFileName; }
+    public void setStorageFileName(String storageFileName) { this.storageFileName = storageFileName; }
+
+    public String getFilePath() { return filePath; }
+    public void setFilePath(String filePath) { this.filePath = filePath; }
+
+    public Long getFileSize() { return fileSize; }
+    public void setFileSize(Long fileSize) { this.fileSize = fileSize; }
+
+    public LocalDateTime getUploadedAt() { return uploadedAt; }
+    public void setUploadedAt(LocalDateTime uploadedAt) { this.uploadedAt = uploadedAt; }
+
+    public User getUploader() { return uploader; }
+    public void setUploader(User uploader) { this.uploader = uploader; }
 }

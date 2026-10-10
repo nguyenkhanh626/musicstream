@@ -1,16 +1,22 @@
 package com.example.musicstream.service;
 
+import com.example.musicstream.model.Role;
 import com.example.musicstream.model.Song;
+import com.example.musicstream.model.User;
 import com.example.musicstream.repository.SongRepository;
 import com.mpatric.mp3agic.Mp3File;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -26,6 +32,10 @@ public class SongService {
     }
 
     public Song uploadSong(MultipartFile file, String inputTitle, String inputArtist) throws Exception {
+        return uploadSong(file, inputTitle, inputArtist, null);
+    }
+
+    public Song uploadSong(MultipartFile file, String inputTitle, String inputArtist, User uploader) throws Exception {
         if (file.isEmpty()) {
             throw new IllegalArgumentException("File không được để trống");
         }
@@ -72,8 +82,51 @@ public class SongService {
                 .filePath(targetPath.toString())
                 .fileSize(file.getSize())
                 .uploadedAt(LocalDateTime.now())
+                .uploader(uploader)
                 .build();
 
+        // Gán uploader bằng setter để đảm bảo tương thích kể cả khi Lombok cache chưa cập nhật builder trong IDE
+        if (uploader != null) {
+            song.setUploader(uploader);
+        }
+
         return songRepository.save(song);
+    }
+
+    public List<Song> getAllSongs() {
+        return songRepository.findAll();
+    }
+
+    public List<Song> getSongsByUploader(Long userId) {
+        return songRepository.findByUploaderId(userId);
+    }
+
+    public Song getSongById(Long id) {
+        return songRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy bài hát với id: " + id));
+    }
+
+    public void deleteSong(Long id, User currentUser) {
+        if (currentUser == null) {
+            throw new AccessDeniedException("Yêu cầu đăng nhập để thực hiện thao tác này");
+        }
+
+        Song song = getSongById(id);
+        boolean isOwner = song.getUploader() != null && song.getUploader().getId().equals(currentUser.getId());
+        boolean isAdmin = currentUser.getRole() == Role.ROLE_ADMIN;
+
+        if (!isOwner && !isAdmin) {
+            throw new AccessDeniedException("Bạn không có quyền xóa bài hát này");
+        }
+
+        // Xóa file vật lý trên ổ đĩa
+        try {
+            if (song.getFilePath() != null) {
+                Files.deleteIfExists(Paths.get(song.getFilePath()));
+            }
+        } catch (IOException ignored) {
+        }
+
+        songRepository.delete(song);
     }
 }
