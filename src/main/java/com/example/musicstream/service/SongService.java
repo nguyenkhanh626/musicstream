@@ -46,9 +46,11 @@ public class SongService {
     private String uploadDir;
 
     private final SongRepository songRepository;
+    private final com.example.musicstream.repository.FavoriteSongRepository favoriteSongRepository;
 
-    public SongService(SongRepository songRepository) {
+    public SongService(SongRepository songRepository, com.example.musicstream.repository.FavoriteSongRepository favoriteSongRepository) {
         this.songRepository = songRepository;
+        this.favoriteSongRepository = favoriteSongRepository;
     }
 
     public Song uploadSong(MultipartFile file, String inputTitle, String inputArtist) throws Exception {
@@ -233,6 +235,12 @@ public class SongService {
 
         if (!isOwner && !isAdmin) {
             throw new AccessDeniedException("Bạn không có quyền xóa bài hát này");
+        }
+
+        // Xóa liên kết bài hát yêu thích trước
+        try {
+            favoriteSongRepository.deleteBySongId(id);
+        } catch (Exception ignored) {
         }
 
         // Xóa file vật lý trên ổ đĩa

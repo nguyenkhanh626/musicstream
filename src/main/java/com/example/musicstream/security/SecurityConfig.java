@@ -62,6 +62,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         // Cho phép truy cập H2 Console khi phát triển
                         .requestMatchers("/h2-console", "/h2-console/**").permitAll()
+                        // Cho phép WebSocket endpoint
+                        .requestMatchers("/ws/**").permitAll()
                         // Cho phép trang web giao diện, tài nguyên tĩnh, favicon và api status
                         .requestMatchers("/", "/index.html", "/error", "/favicon.ico", "/css/**", "/js/**", "/images/**", "/api/status").permitAll()
                         // Các request khác (như upload nhạc, sửa, xóa, thông tin cá nhân) cần đăng nhập

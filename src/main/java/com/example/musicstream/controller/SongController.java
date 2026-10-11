@@ -20,9 +20,11 @@ import java.util.List;
 public class SongController {
 
     private final SongService songService;
+    private final com.example.musicstream.service.SyncRoomService syncRoomService;
 
-    public SongController(SongService songService) {
+    public SongController(SongService songService, com.example.musicstream.service.SyncRoomService syncRoomService) {
         this.songService = songService;
+        this.syncRoomService = syncRoomService;
     }
 
     @PostMapping("/upload")
@@ -49,7 +51,13 @@ public class SongController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        Song song = songService.getSongByIdForUser(id, principal.getUser());
+        Song song;
+        if (syncRoomService.isUserInRoomWithSong(principal.getId(), id)) {
+            song = songService.getSongById(id);
+        } else {
+            song = songService.getSongByIdForUser(id, principal.getUser());
+        }
+
         if (song.getCoverPath() != null && java.nio.file.Files.exists(java.nio.file.Paths.get(song.getCoverPath()))) {
             Resource resource = new FileSystemResource(song.getCoverPath());
             MediaType mediaType = MediaTypeFactory.getMediaType(resource).orElse(MediaType.IMAGE_JPEG);
@@ -71,8 +79,13 @@ public class SongController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        // Kiểm tra quyền sở hữu bài hát trong kho riêng
-        Song song = songService.getSongByIdForUser(id, principal.getUser());
+        // Kiểm tra quyền: Hoặc là chủ bài hát, hoặc là thành viên trong phòng nghe chung bài này
+        Song song;
+        if (syncRoomService.isUserInRoomWithSong(principal.getId(), id)) {
+            song = songService.getSongById(id);
+        } else {
+            song = songService.getSongByIdForUser(id, principal.getUser());
+        }
 
         Resource audioResource = new FileSystemResource(song.getFilePath());
         long contentLength = audioResource.contentLength();

@@ -8,6 +8,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- SockJS and STOMP CDN for Listen Together Realtime Room -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
     <style>
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #121212; }
@@ -49,11 +52,14 @@
             </div>
         </div>
 
-        <!-- Ô Tìm Kiếm -->
-        <div id="searchWrapper" class="w-1/3 max-w-md relative hidden">
+        <!-- Ô Tìm Kiếm Toàn Diện -->
+        <div id="searchWrapper" class="w-2/5 max-w-lg relative hidden">
             <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-            <input type="text" id="searchInput" placeholder="Tìm bài hát trong kho của bạn..." 
-                   class="w-full bg-[#242424] text-sm text-white rounded-full pl-10 pr-4 py-2 border border-transparent focus:border-emerald-500 focus:outline-none transition-all placeholder-gray-500">
+            <input type="text" id="searchInput" placeholder="Tìm bài hát, nghệ sĩ, album, playlist..." 
+                   class="w-full bg-[#242424] text-sm text-white rounded-full pl-10 pr-10 py-2.5 border border-transparent focus:border-emerald-500 focus:outline-none transition-all placeholder-gray-500">
+            <button id="clearSearchBtn" onclick="clearSearch()" class="hidden absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-xs p-1">
+                <i class="fa-solid fa-circle-xmark"></i>
+            </button>
         </div>
 
         <!-- Khu vực Người Dùng / Auth -->
@@ -74,6 +80,14 @@
                         <i class="fa-solid fa-music text-emerald-400 text-base"></i>
                         <span>Tất cả bài hát</span>
                     </button>
+                    <button id="navFavorites" onclick="switchMainTab('favorites')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition text-gray-400 hover:text-white hover:bg-[#202020]">
+                        <i class="fa-solid fa-heart text-rose-500 text-base"></i>
+                        <span>Bài hát yêu thích</span>
+                    </button>
+                    <button id="navPlaylists" onclick="switchMainTab('playlists')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition text-gray-400 hover:text-white hover:bg-[#202020]">
+                        <i class="fa-solid fa-list-ul text-amber-400 text-base"></i>
+                        <span>Danh sách phát (Playlists)</span>
+                    </button>
                     <button id="navArtists" onclick="switchMainTab('artists')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition text-gray-400 hover:text-white hover:bg-[#202020]">
                         <i class="fa-solid fa-users text-purple-400 text-base"></i>
                         <span>Theo Nghệ sĩ</span>
@@ -81,6 +95,11 @@
                     <button id="navAlbums" onclick="switchMainTab('albums')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition text-gray-400 hover:text-white hover:bg-[#202020]">
                         <i class="fa-solid fa-compact-disc text-blue-400 text-base"></i>
                         <span>Theo Album</span>
+                    </button>
+                    <!-- Nút Nghe Chung Thời Gian Thực -->
+                    <button id="navSyncRoom" onclick="switchMainTab('sync_room')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition text-emerald-400 hover:text-white hover:bg-[#202020] border border-emerald-500/20 bg-emerald-500/5">
+                        <i class="fa-solid fa-satellite-dish text-emerald-400 text-base animate-pulse"></i>
+                        <span>Phòng Nghe Chung 🎧</span>
                     </button>
                 </div>
 
@@ -189,10 +208,278 @@
                     </div>
                 </div>
 
+                <!-- SECTION 2.5: PLAYLISTS SECTION -->
+                <div id="playlistsSection" class="hidden space-y-4">
+                    <div class="flex items-center justify-between">
+                        <p class="text-sm text-gray-400">Các danh sách phát tùy chỉnh của riêng bạn</p>
+                        <button onclick="openCreatePlaylistModal()" class="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-semibold rounded-xl text-xs flex items-center gap-2 transition shadow">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Tạo Playlist mới</span>
+                        </button>
+                    </div>
+                    <div id="playlistsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        <!-- Render bằng JS -->
+                    </div>
+                </div>
+
                 <!-- SECTION 3: GRID ALBUM -->
                 <div id="albumsSection" class="hidden">
                     <div id="albumsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                         <!-- Render bằng JS -->
+                    </div>
+                </div>
+
+                <!-- SECTION 4: TÌM KIẾM TỔNG HỢP (SEARCH RESULTS VIEW) -->
+                <div id="searchResultsSection" class="hidden space-y-8">
+                    <!-- Filter Chips (Tất cả, Bài hát, Nghệ sĩ, Album, Playlist) -->
+                    <div class="flex items-center gap-2 overflow-x-auto pb-2">
+                        <button onclick="setSearchFilter('all')" id="filterSearchAll" class="px-4 py-1.5 rounded-full text-xs font-semibold bg-emerald-500 text-black transition">Tất cả</button>
+                        <button onclick="setSearchFilter('songs')" id="filterSearchSongs" class="px-4 py-1.5 rounded-full text-xs font-semibold bg-[#282828] text-gray-300 hover:text-white transition">Bài hát</button>
+                        <button onclick="setSearchFilter('artists')" id="filterSearchArtists" class="px-4 py-1.5 rounded-full text-xs font-semibold bg-[#282828] text-gray-300 hover:text-white transition">Nghệ sĩ</button>
+                        <button onclick="setSearchFilter('albums')" id="filterSearchAlbums" class="px-4 py-1.5 rounded-full text-xs font-semibold bg-[#282828] text-gray-300 hover:text-white transition">Album</button>
+                        <button onclick="setSearchFilter('playlists')" id="filterSearchPlaylists" class="px-4 py-1.5 rounded-full text-xs font-semibold bg-[#282828] text-gray-300 hover:text-white transition">Playlist</button>
+                    </div>
+
+                    <!-- Khối 1: Bài hát tìm thấy -->
+                    <div id="searchSongsBlock" class="space-y-3">
+                        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-music text-emerald-400"></i>
+                            <span>Bài hát</span>
+                            <span id="searchSongsCount" class="text-xs text-gray-400 font-mono font-normal"></span>
+                        </h3>
+                        <div class="bg-[#181818] rounded-2xl border border-[#282828] overflow-hidden">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-[#202020] text-gray-400 uppercase text-[11px] font-semibold tracking-wider border-b border-[#282828]">
+                                    <tr>
+                                        <th class="py-3.5 px-4 w-12 text-center">#</th>
+                                        <th class="py-3.5 px-4">Bài hát</th>
+                                        <th class="py-3.5 px-4 hidden md:table-cell">Album</th>
+                                        <th class="py-3.5 px-4 text-center w-24">Định dạng</th>
+                                        <th class="py-3.5 px-4 text-center w-24">Thời lượng</th>
+                                        <th class="py-3.5 px-4 text-right w-24">Hành động</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="searchSongListBody" class="divide-y divide-[#242424]"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Khối 2: Nghệ sĩ tìm thấy -->
+                    <div id="searchArtistsBlock" class="space-y-3">
+                        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-users text-purple-400"></i>
+                            <span>Nghệ sĩ</span>
+                            <span id="searchArtistsCount" class="text-xs text-gray-400 font-mono font-normal"></span>
+                        </h3>
+                        <div id="searchArtistsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+                    </div>
+
+                    <!-- Khối 3: Album tìm thấy -->
+                    <div id="searchAlbumsBlock" class="space-y-3">
+                        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-compact-disc text-blue-400"></i>
+                            <span>Album</span>
+                            <span id="searchAlbumsCount" class="text-xs text-gray-400 font-mono font-normal"></span>
+                        </h3>
+                        <div id="searchAlbumsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+                    </div>
+
+                    <!-- Khối 4: Playlist tìm thấy -->
+                    <div id="searchPlaylistsBlock" class="space-y-3">
+                        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-list-ul text-amber-400"></i>
+                            <span>Danh sách phát (Playlists)</span>
+                            <span id="searchPlaylistsCount" class="text-xs text-gray-400 font-mono font-normal"></span>
+                        </h3>
+                        <div id="searchPlaylistsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+                    </div>
+                </div>
+
+                <!-- SECTION 5: PHÒNG NGHE CHUNG THỜI GIAN THỰC (LISTEN TOGETHER ROOM) -->
+                <div id="syncRoomSection" class="hidden space-y-6">
+                    <!-- Trạng thái 1: Chưa vào phòng nào (Lobby: Tạo phòng hoặc Nhập mã vào phòng) -->
+                    <div id="roomLobbyView" class="max-w-2xl mx-auto py-8 space-y-8">
+                        <div class="text-center space-y-2">
+                            <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center mx-auto text-black text-2xl shadow-xl shadow-emerald-500/20">
+                                <i class="fa-solid fa-satellite-dish"></i>
+                            </div>
+                            <h2 class="text-2xl font-extrabold tracking-tight">Phòng Nghe Chung Thời Gian Thực</h2>
+                            <p class="text-gray-400 text-xs max-w-md mx-auto">
+                                Nghe nhạc cùng bạn bè từ xa. Khi chủ phòng phát, tạm dừng hoặc tua bài, tất cả người trong phòng đều đồng bộ đúng từng giây!
+                            </p>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <!-- Card 1: Tạo phòng mới -->
+                            <div class="bg-[#1e1e1e] border border-[#2e2e2e] hover:border-emerald-500/50 rounded-2xl p-6 space-y-4 transition flex flex-col justify-between">
+                                <div class="space-y-2">
+                                    <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                                        <i class="fa-solid fa-plus text-base"></i>
+                                    </div>
+                                    <h3 class="font-bold text-white text-base">Tạo phòng của bạn</h3>
+                                    <p class="text-xs text-gray-400 leading-relaxed">
+                                        Bạn sẽ làm Chủ phòng (Host). Nhạc phát từ kho của bạn sẽ được đồng bộ và stream trực tiếp cho mọi người.
+                                    </p>
+                                </div>
+                                <div>
+                                    <input type="text" id="createRoomNameInput" placeholder="Tên phòng (Tùy chọn)..." onkeydown="if(event.key==='Enter') handleCreateRoom()"
+                                           class="w-full bg-[#282828] border border-[#383838] rounded-xl px-3 py-2 text-xs mb-3 focus:outline-none focus:border-emerald-500">
+                                    <button onclick="handleCreateRoom()" class="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2">
+                                        <i class="fa-solid fa-tower-broadcast"></i>
+                                        <span>Bắt đầu tạo phòng</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Card 2: Vào phòng bằng mã mời -->
+                            <div class="bg-[#1e1e1e] border border-[#2e2e2e] hover:border-teal-500/50 rounded-2xl p-6 space-y-4 transition flex flex-col justify-between">
+                                <div class="space-y-2">
+                                    <div class="w-10 h-10 rounded-xl bg-teal-500/10 text-teal-400 flex items-center justify-center">
+                                        <i class="fa-solid fa-ticket text-base"></i>
+                                    </div>
+                                    <h3 class="font-bold text-white text-base">Vào bằng Mã mời (PIN)</h3>
+                                    <p class="text-xs text-gray-400 leading-relaxed">
+                                        Nhập mã 6 ký tự do chủ phòng gửi hoặc mã phòng để tham gia ngay vào phiên nghe nhạc cùng nhau.
+                                    </p>
+                                </div>
+                                <div>
+                                    <input type="text" id="joinRoomCodeInput" placeholder="Nhập mã mời (Ví dụ: K8P3X9)..." maxlength="12" onkeydown="if(event.key==='Enter') handleJoinRoom()"
+                                           class="w-full bg-[#282828] border border-[#383838] rounded-xl px-3 py-2 text-xs mb-3 uppercase tracking-wider font-mono focus:outline-none focus:border-teal-500 text-center font-bold">
+                                    <button onclick="handleJoinRoom()" class="w-full py-2.5 bg-teal-500 hover:bg-teal-400 text-black font-bold rounded-xl text-xs transition shadow-lg shadow-teal-500/20 flex items-center justify-center gap-2">
+                                        <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                                        <span>Tham gia phòng</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Trạng thái 2: Đang ở trong phòng nghe chung (Active Room View) -->
+                    <div id="activeRoomView" class="hidden space-y-6">
+                        <!-- Top Banner của phòng -->
+                        <div class="bg-gradient-to-r from-emerald-950/40 via-[#1e1e1e] to-[#181818] border border-emerald-500/30 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
+                            <div class="space-y-1">
+                                <div class="flex items-center gap-3">
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono uppercase">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                                        LIVE SYNC
+                                    </span>
+                                    <h2 id="activeRoomName" class="text-xl font-extrabold text-white">Phòng Nghe Chung</h2>
+                                </div>
+                                <p id="activeRoomHostText" class="text-xs text-gray-400">Chủ phòng: ---</p>
+                            </div>
+
+                            <!-- Mã mời PIN & Các nút hành động -->
+                            <div class="flex flex-wrap items-center gap-3">
+                                <div class="flex items-center bg-[#252525] border border-[#353535] rounded-xl px-3 py-1.5 gap-2 font-mono">
+                                    <span class="text-[11px] text-gray-400 uppercase">Mã mời:</span>
+                                    <span id="activeRoomInviteCode" class="text-sm font-bold text-emerald-400 tracking-wider">------</span>
+                                    <button onclick="copyInviteCode()" class="text-gray-400 hover:text-white text-xs ml-1" title="Sao chép mã">
+                                        <i class="fa-regular fa-copy"></i>
+                                    </button>
+                                </div>
+
+                                <button id="btnInviteMemberModal" onclick="openInviteUserModal()" class="px-3.5 py-2 bg-[#282828] hover:bg-[#333] border border-[#3e3e3e] text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition">
+                                    <i class="fa-solid fa-user-plus text-emerald-400"></i>
+                                    <span>Mời bạn bè</span>
+                                </button>
+
+                                <button onclick="handleLeaveCurrentRoom()" class="px-3.5 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition" title="Rời phòng">
+                                    <i class="fa-solid fa-right-from-bracket"></i>
+                                    <span>Rời phòng</span>
+                                </button>
+
+                                <button id="btnCloseRoomBtn" onclick="handleCloseCurrentRoom()" class="hidden px-3.5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold transition shadow" title="Đóng & Đình chỉ phòng hoàn toàn">
+                                    <i class="fa-solid fa-power-off"></i>
+                                    <span>Đóng phòng</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Bố cục chính: Bên trái là Bài đang phát & Danh sách chọn bài (dành cho Host), Bên phải là Thành viên & Chat -->
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <!-- Cột Trái + Giữa: Máy nghe nhạc đồng bộ & Danh sách bài hát kho Host -->
+                            <div class="lg:col-span-2 space-y-6">
+                                <!-- Card Bài hát đang đồng bộ phát -->
+                                <div class="bg-[#1e1e1e] border border-[#2e2e2e] rounded-2xl p-6 flex items-center gap-5">
+                                    <div class="relative w-24 h-24 shrink-0">
+                                        <img id="roomCoverImg" src="" alt="Cover" class="w-24 h-24 rounded-2xl object-cover shadow-xl border border-[#333] hidden">
+                                        <div id="roomDiscFallback" class="w-24 h-24 rounded-2xl bg-gradient-to-tr from-gray-800 to-gray-900 border border-[#333] flex items-center justify-center shadow-md">
+                                            <i class="fa-solid fa-music text-emerald-400 text-3xl"></i>
+                                        </div>
+                                    </div>
+                                    <div class="truncate flex-1">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span id="roomStatusBadge" class="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-mono font-bold">
+                                                Đang phát cùng nhau
+                                            </span>
+                                        </div>
+                                        <h3 id="roomSongTitle" class="text-xl font-bold text-white truncate">Chưa chọn bài hát</h3>
+                                        <p id="roomSongArtist" class="text-sm text-gray-400 truncate mt-0.5">---</p>
+                                        <div id="hostNoticeText" class="text-[11px] text-amber-400/90 mt-2 flex items-center gap-1.5">
+                                            <i class="fa-solid fa-crown text-amber-400"></i>
+                                            <span>Bạn là Chủ phòng: Bất kỳ bài hát nào bạn chọn hoặc tua sẽ đồng bộ cho mọi người.</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Bảng chọn bài hát của Host để stream cho cả phòng -->
+                                <div id="roomHostSongPicker" class="space-y-3">
+                                    <div class="flex items-center justify-between">
+                                        <h4 class="font-bold text-sm text-white flex items-center gap-2">
+                                            <i class="fa-solid fa-record-vinyl text-emerald-400"></i>
+                                            <span>Chọn bài hát từ kho để phát cho cả phòng</span>
+                                        </h4>
+                                        <span class="text-xs text-gray-500">Chỉ Host mới có quyền đổi bài</span>
+                                    </div>
+                                    <div class="bg-[#181818] rounded-2xl border border-[#282828] max-h-80 overflow-y-auto">
+                                        <table class="w-full text-left text-sm">
+                                            <thead class="bg-[#202020] text-gray-400 uppercase text-[11px] font-semibold sticky top-0">
+                                                <tr>
+                                                    <th class="py-3 px-4 w-12 text-center">#</th>
+                                                    <th class="py-3 px-4">Bài hát</th>
+                                                    <th class="py-3 px-4 hidden sm:table-cell">Album</th>
+                                                    <th class="py-3 px-4 text-right w-24">Phát</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="roomSongPickerBody" class="divide-y divide-[#242424]"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Cột Phải: Danh sách người trong phòng & Khung Chat thời gian thực -->
+                            <div class="space-y-6">
+                                <!-- Danh sách thành viên -->
+                                <div class="bg-[#1e1e1e] border border-[#2e2e2e] rounded-2xl p-5 space-y-4">
+                                    <div class="flex items-center justify-between">
+                                        <h4 class="font-bold text-sm text-white flex items-center gap-2">
+                                            <i class="fa-solid fa-users text-teal-400"></i>
+                                            <span>Thành viên trong phòng</span>
+                                        </h4>
+                                        <span id="roomMembersCount" class="text-xs font-mono bg-[#282828] text-gray-300 px-2 py-0.5 rounded-full">1 người</span>
+                                    </div>
+                                    <div id="roomMembersList" class="space-y-2 max-h-48 overflow-y-auto pr-1"></div>
+                                </div>
+
+                                <!-- Khung Chat trực tiếp trong phòng -->
+                                <div class="bg-[#1e1e1e] border border-[#2e2e2e] rounded-2xl p-5 flex flex-col h-72">
+                                    <h4 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                                        <i class="fa-solid fa-comments text-amber-400"></i>
+                                        <span>Trò chuyện trong phòng</span>
+                                    </h4>
+                                    <div id="roomChatMessages" class="flex-1 overflow-y-auto space-y-2 text-xs pr-1 mb-3">
+                                        <div class="text-gray-500 text-center py-4 text-[11px]">Chào mừng bạn đến với phòng nghe chung! Hãy gửi tin nhắn cho bạn bè.</div>
+                                    </div>
+                                    <form onsubmit="handleSendRoomChat(event)" class="flex gap-2">
+                                        <input type="text" id="roomChatInput" placeholder="Nhập tin nhắn..." class="flex-1 bg-[#282828] border border-[#383838] rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-emerald-500">
+                                        <button type="submit" class="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl text-xs transition">
+                                            <i class="fa-solid fa-paper-plane"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -213,27 +500,35 @@
 
     <!-- BOTTOM FIXED AUDIO PLAYER BAR -->
     <footer id="audioPlayerFooter" class="fixed bottom-0 left-0 right-0 h-24 bg-[#181818] border-t border-[#282828] px-6 flex items-center justify-between z-20 shadow-2xl opacity-40 pointer-events-none transition duration-300">
-        <!-- Trái: Thông tin bài hát đang phát -->
-        <div class="flex items-center gap-4 w-1/4 min-w-[200px]">
+        <!-- Trái: Thông tin bài hát đang phát & Nút thả tim -->
+        <div class="flex items-center gap-3 w-1/4 min-w-[220px]">
             <div class="relative w-14 h-14 shrink-0">
                 <img id="playerCoverImg" src="" alt="Cover" class="w-14 h-14 rounded-xl object-cover shadow-lg border border-[#333] hidden">
                 <div id="playerDiscFallback" class="w-14 h-14 rounded-xl bg-gradient-to-tr from-gray-800 to-gray-900 border border-[#333] flex items-center justify-center shadow-md overflow-hidden">
                     <i class="fa-solid fa-music text-emerald-400 text-xl"></i>
                 </div>
             </div>
-            <div class="truncate">
+            <div class="truncate flex-1">
                 <div class="flex items-center gap-2">
                     <h4 id="playerTitle" class="text-sm font-semibold truncate text-white">Chưa chọn bài hát</h4>
                     <span id="playerFormatBadge" class="hidden"></span>
                 </div>
                 <p id="playerArtist" class="text-xs text-gray-400 truncate mt-0.5">---</p>
             </div>
+            <!-- Favorite button in player -->
+            <button id="playerFavBtn" onclick="toggleFavoriteCurrentSong()" class="p-2 text-gray-500 hover:text-rose-500 transition text-base" title="Thêm vào yêu thích">
+                <i id="playerFavIcon" class="fa-regular fa-heart"></i>
+            </button>
         </div>
 
-        <!-- Giữa: Controls & Seek Bar -->
+        <!-- Giữa: Controls (Shuffle, Prev, Play/Pause, Next, Repeat) & Seek Bar -->
         <div class="flex flex-col items-center gap-2 w-2/4 max-w-xl">
             <!-- Buttons -->
-            <div class="flex items-center gap-6">
+            <div class="flex items-center gap-5">
+                <!-- Shuffle Button -->
+                <button id="shuffleBtn" onclick="toggleShuffle()" class="text-gray-400 hover:text-white transition text-sm p-1.5" title="Phát ngẫu nhiên (Shuffle: Tắt)">
+                    <i class="fa-solid fa-shuffle"></i>
+                </button>
                 <button onclick="playPrevSong()" class="text-gray-400 hover:text-white transition text-lg" title="Bài trước">
                     <i class="fa-solid fa-backward-step"></i>
                 </button>
@@ -242,6 +537,11 @@
                 </button>
                 <button onclick="playNextSong()" class="text-gray-400 hover:text-white transition text-lg" title="Bài kế tiếp">
                     <i class="fa-solid fa-forward-step"></i>
+                </button>
+                <!-- Repeat Button -->
+                <button id="repeatBtn" onclick="toggleRepeat()" class="text-gray-400 hover:text-white transition text-sm p-1.5 relative" title="Chế độ lặp lại (Tắt)">
+                    <i id="repeatIcon" class="fa-solid fa-repeat"></i>
+                    <span id="repeatOneBadge" class="hidden absolute -top-1 -right-1 text-[9px] font-bold bg-emerald-500 text-black px-1 rounded-full leading-tight">1</span>
                 </button>
             </div>
 
@@ -254,13 +554,18 @@
             </div>
         </div>
 
-        <!-- Phải: Volume Control -->
-        <div class="flex items-center justify-end gap-3 w-1/4 min-w-[150px]">
+        <!-- Phải: Volume Control & Hàng đợi Queue -->
+        <div class="flex items-center justify-end gap-3 w-1/4 min-w-[170px]">
+            <!-- Nút bật Hàng đợi Queue -->
+            <button id="queueToggleBtn" onclick="toggleQueuePanel()" class="p-2 text-gray-400 hover:text-white transition relative" title="Hàng đợi phát nhạc">
+                <i class="fa-solid fa-layer-group text-base"></i>
+                <span id="queueBadge" class="hidden absolute top-0.5 right-0.5 bg-emerald-500 text-black text-[9px] font-extrabold px-1 rounded-full">0</span>
+            </button>
             <button onclick="toggleMute()" class="text-gray-400 hover:text-white text-base">
                 <i id="volumeIcon" class="fa-solid fa-volume-high"></i>
             </button>
             <input type="range" id="volumeBar" min="0" max="1" step="0.05" value="1" 
-                   class="w-24 h-1.5 bg-[#333] rounded-lg cursor-pointer" oninput="onVolumeChange(this.value)">
+                   class="w-20 h-1.5 bg-[#333] rounded-lg cursor-pointer" oninput="onVolumeChange(this.value)">
         </div>
     </footer>
 
@@ -380,6 +685,100 @@
         </div>
     </div>
 
+    <!-- 3. MODAL TẠO PLAYLIST MỚI -->
+    <div id="createPlaylistModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-[#1e1e1e] border border-[#2e2e2e] rounded-2xl w-full max-w-md p-6 shadow-2xl relative">
+            <button onclick="closeCreatePlaylistModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-list-plus text-amber-400"></i>
+                <span>Tạo Playlist Mới</span>
+            </h3>
+            <form onsubmit="handleCreatePlaylist(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-300 mb-1">Tên playlist</label>
+                    <input type="text" id="newPlaylistName" required placeholder="Ví dụ: Nhạc chill đêm muộn, Gym Motivation..." class="w-full bg-[#282828] border border-[#383838] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-300 mb-1">Mô tả (Tùy chọn)</label>
+                    <textarea id="newPlaylistDesc" rows="3" placeholder="Viết vài dòng giới thiệu về danh sách này..." class="w-full bg-[#282828] border border-[#383838] rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-emerald-500"></textarea>
+                </div>
+                <div class="flex justify-end gap-3 pt-2">
+                    <button type="button" onclick="closeCreatePlaylistModal()" class="px-5 py-2.5 rounded-xl text-sm font-semibold text-gray-400 hover:text-white bg-[#282828] transition">Hủy</button>
+                    <button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-bold text-black bg-emerald-500 hover:bg-emerald-400 transition">Tạo Playlist</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 4. MODAL THÊM BÀI HÁT VÀO PLAYLIST -->
+    <div id="addToPlaylistModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-[#1e1e1e] border border-[#2e2e2e] rounded-2xl w-full max-w-md p-6 shadow-2xl relative">
+            <button onclick="closeAddToPlaylistModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-folder-plus text-emerald-400"></i>
+                <span>Thêm vào danh sách phát</span>
+            </h3>
+            <p id="targetSongTitle" class="text-xs text-gray-400 mb-3 truncate font-semibold"></p>
+            <div id="playlistSelectList" class="max-h-60 overflow-y-auto space-y-2 pr-1">
+                <!-- Render bằng JS -->
+            </div>
+            <div class="pt-4 border-t border-[#2e2e2e] mt-4 flex items-center justify-between">
+                <button onclick="closeAddToPlaylistModal(); openCreatePlaylistModal();" class="text-xs text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1.5">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Tạo Playlist mới</span>
+                </button>
+                <button onclick="closeAddToPlaylistModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-gray-400 hover:text-white bg-[#282828] transition">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. PANEL HÀNG ĐỢI PHÁT NHẠC (QUEUE FLYOUT DRAWER) -->
+    <div id="queueDrawer" class="fixed top-16 right-0 bottom-24 w-80 bg-[#1a1a1a] border-l border-[#2e2e2e] shadow-2xl z-30 transform translate-x-full transition-transform duration-300 flex flex-col">
+        <div class="p-4 border-b border-[#2e2e2e] flex items-center justify-between">
+            <div class="flex items-center gap-2 font-bold text-sm">
+                <i class="fa-solid fa-layer-group text-emerald-400"></i>
+                <span>Hàng đợi tiếp theo</span>
+                <span id="queueDrawerCount" class="text-xs font-mono text-gray-400">(0)</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="clearQueue()" class="text-xs text-gray-400 hover:text-red-400 transition px-2 py-1" title="Xóa toàn bộ hàng đợi">Xóa hết</button>
+                <button onclick="toggleQueuePanel()" class="text-gray-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        </div>
+        <div id="queueSongList" class="flex-1 overflow-y-auto p-3 space-y-2">
+            <!-- Render danh sách chờ bằng JS -->
+        </div>
+    </div>
+
+    <!-- 6. MODAL MỜI BẠN BÈ VÀO PHÒNG THEO USERNAME -->
+    <div id="inviteUserModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-[#1e1e1e] border border-[#2e2e2e] rounded-2xl w-full max-w-sm p-6 shadow-2xl relative">
+            <button onclick="closeInviteUserModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            <h3 class="text-lg font-bold mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-user-plus text-emerald-400"></i>
+                <span>Thêm bạn bè vào phòng</span>
+            </h3>
+            <p class="text-xs text-gray-400 mb-4">Nhập chính xác tên đăng nhập (username) của người bạn muốn mời:</p>
+            <form onsubmit="handleInviteUserSubmit(event)" class="space-y-4">
+                <div>
+                    <input type="text" id="inviteUsernameInput" required placeholder="Nhập username bạn bè..." class="w-full bg-[#282828] border border-[#383838] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500">
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="closeInviteUserModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-gray-400 hover:text-white bg-[#282828] transition">Hủy</button>
+                    <button type="submit" class="px-4 py-2 rounded-xl text-xs font-bold text-black bg-emerald-500 hover:bg-emerald-400 transition">Mời vào phòng</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- TOAST NOTIFICATION CONTAINER -->
     <div id="toastContainer" class="fixed top-5 right-5 space-y-3 z-50"></div>
 
@@ -387,12 +786,26 @@
     <script>
         let mySongs = [];
         let displayedSongs = [];
-        let currentTab = 'all'; // 'all', 'artists', 'albums', 'artist_detail', 'album_detail'
+        let favoriteSongIds = new Set();
+        let userPlaylists = [];
+        let currentPlaylist = null;
+        let currentTab = 'all'; // 'all', 'favorites', 'playlists', 'playlist_detail', 'artists', 'albums', 'artist_detail', 'album_detail'
         let currentSongIndex = -1;
         let isPlaying = false;
         let currentUser = null;
         let selectedArtist = null;
         let selectedAlbum = null;
+        let targetSongForPlaylist = null;
+
+        // Chế độ phát nâng cao
+        let isShuffle = false;
+        let repeatMode = 'off'; // 'off', 'all', 'one'
+        let playQueue = []; // Danh sách các bài hát trong hàng đợi tiếp theo
+
+        // Phòng nghe chung thời gian thực (Listen Together Sync Room)
+        let currentRoom = null;
+        let stompClient = null;
+        let isSyncingFromRemote = false; // Cờ chặn loop sự kiện khi nhận lệnh từ WebSocket
 
         const audio = document.getElementById('audioElement');
         const progressBar = document.getElementById('progressBar');
@@ -442,6 +855,7 @@
             title.textContent = `Kho nhạc của ${currentUser.displayName || currentUser.username}`;
 
             fetchSongs();
+            checkMyActiveRoom();
         }
 
         function onUserLoggedOut() {
@@ -566,6 +980,10 @@
         }
 
         function logout() {
+            if (currentRoom) {
+                handleLeaveCurrentRoom();
+            }
+            cleanupRoom();
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             currentUser = null;
@@ -573,68 +991,140 @@
             showToast('Đã đăng xuất khỏi kho nhạc', 'info');
         }
 
-        // ================= FETCH SONGS =================
+        // ================= FETCH SONGS, FAVORITES & PLAYLISTS =================
         async function fetchSongs() {
             if (!currentUser) return;
             const token = localStorage.getItem('token');
 
             try {
-                const res = await fetch('/api/songs', {
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
+                const [songsRes, favRes, playlistsRes] = await Promise.all([
+                    fetch('/api/songs', { headers: { 'Authorization': 'Bearer ' + token } }),
+                    fetch('/api/playlists/favorites/ids', { headers: { 'Authorization': 'Bearer ' + token } }),
+                    fetch('/api/playlists', { headers: { 'Authorization': 'Bearer ' + token } })
+                ]);
 
-                if (res.status === 401) {
+                if (songsRes.status === 401 || favRes.status === 401) {
                     logout();
                     return;
                 }
 
-                if (!res.ok) throw new Error('Không thể tải kho nhạc của bạn');
-                mySongs = await res.json();
+                if (!songsRes.ok) throw new Error('Không thể tải kho nhạc của bạn');
+                mySongs = await songsRes.json();
+
+                if (favRes.ok) {
+                    const favIds = await favRes.json();
+                    favoriteSongIds = new Set(favIds);
+                }
+
+                if (playlistsRes.ok) {
+                    userPlaylists = await playlistsRes.json();
+                }
+
+                updatePlayerFavIcon();
                 refreshCurrentView();
             } catch (err) {
                 showToast(err.message, 'error');
             }
         }
 
+        async function fetchPlaylists() {
+            if (!currentUser) return;
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch('/api/playlists', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (res.ok) {
+                    userPlaylists = await res.json();
+                    if (currentTab === 'playlists') renderPlaylists();
+                }
+            } catch (e) {}
+        }
+
         // ================= TAB SWITCHING =================
         function switchMainTab(tab) {
+            if (!currentUser) {
+                openAuthModal('login');
+                showToast('Vui lòng đăng nhập để sử dụng tính năng này!', 'info');
+                return;
+            }
             currentTab = tab;
+            if (tab === 'sync_room') {
+                localStorage.setItem('activeRoomTab', 'true');
+            } else {
+                localStorage.setItem('activeRoomTab', 'false');
+            }
             selectedArtist = null;
             selectedAlbum = null;
+            currentPlaylist = null;
 
             const navAll = document.getElementById('navAllSongs');
+            const navFavorites = document.getElementById('navFavorites');
+            const navPlaylists = document.getElementById('navPlaylists');
             const navArtists = document.getElementById('navArtists');
             const navAlbums = document.getElementById('navAlbums');
+            const navSyncRoom = document.getElementById('navSyncRoom');
 
             const activeClass = 'w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition bg-[#282828] text-white';
             const inactiveClass = 'w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition text-gray-400 hover:text-white hover:bg-[#202020]';
+            const activeRoomClass = 'w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition text-white bg-emerald-600 border border-emerald-400 shadow-lg shadow-emerald-500/20';
+            const inactiveRoomClass = 'w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition text-emerald-400 hover:text-white hover:bg-[#202020] border border-emerald-500/20 bg-emerald-500/5';
 
             if (navAll) navAll.className = (tab === 'all') ? activeClass : inactiveClass;
+            if (navFavorites) navFavorites.className = (tab === 'favorites') ? activeClass : inactiveClass;
+            if (navPlaylists) navPlaylists.className = (tab === 'playlists' || tab === 'playlist_detail') ? activeClass : inactiveClass;
             if (navArtists) navArtists.className = (tab === 'artists' || tab === 'artist_detail') ? activeClass : inactiveClass;
             if (navAlbums) navAlbums.className = (tab === 'albums' || tab === 'album_detail') ? activeClass : inactiveClass;
+            if (navSyncRoom) navSyncRoom.className = (tab === 'sync_room') ? activeRoomClass : inactiveRoomClass;
 
             refreshCurrentView();
         }
 
         function refreshCurrentView() {
             const songsTableSection = document.getElementById('songsTableSection');
+            const playlistsSection = document.getElementById('playlistsSection');
             const artistsSection = document.getElementById('artistsSection');
             const albumsSection = document.getElementById('albumsSection');
+            const searchResultsSection = document.getElementById('searchResultsSection');
+            const syncRoomSection = document.getElementById('syncRoomSection');
             const emptyState = document.getElementById('emptyState');
             const btnBack = document.getElementById('btnBackToGroup');
             const title = document.getElementById('userLibraryTitle');
             const subtitle = document.getElementById('userLibrarySubtitle');
             const countBadge = document.getElementById('songCountBadge');
 
-            if (!mySongs || mySongs.length === 0) {
+            if (currentTab === 'sync_room') {
                 if (songsTableSection) songsTableSection.classList.add('hidden');
+                if (playlistsSection) playlistsSection.classList.add('hidden');
                 if (artistsSection) artistsSection.classList.add('hidden');
                 if (albumsSection) albumsSection.classList.add('hidden');
+                if (searchResultsSection) searchResultsSection.classList.add('hidden');
+                if (emptyState) emptyState.classList.add('hidden');
+                if (btnBack) btnBack.classList.add('hidden');
+                if (syncRoomSection) syncRoomSection.classList.remove('hidden');
+
+                if (title) title.textContent = 'Phòng Nghe Chung Thời Gian Thực 🎧';
+                if (subtitle) subtitle.textContent = 'Đồng bộ phát nhạc với bạn bè qua kết nối trực tiếp';
+                if (countBadge) countBadge.textContent = currentRoom ? 'Đang trong phòng' : 'Chưa vào phòng';
+                renderSyncRoomView();
+                return;
+            }
+
+            if (syncRoomSection) syncRoomSection.classList.add('hidden');
+
+            if (!mySongs || mySongs.length === 0) {
+                if (songsTableSection) songsTableSection.classList.add('hidden');
+                if (playlistsSection) playlistsSection.classList.add('hidden');
+                if (artistsSection) artistsSection.classList.add('hidden');
+                if (albumsSection) albumsSection.classList.add('hidden');
+                if (searchResultsSection) searchResultsSection.classList.add('hidden');
                 if (btnBack) btnBack.classList.add('hidden');
                 if (emptyState) emptyState.classList.remove('hidden');
                 if (countBadge) countBadge.textContent = '0 bài';
                 return;
             }
+
+            if (searchResultsSection) searchResultsSection.classList.add('hidden');
 
             if (emptyState) emptyState.classList.add('hidden');
 
@@ -645,10 +1135,53 @@
                 if (countBadge) countBadge.textContent = `${mySongs.length} bài`;
 
                 if (songsTableSection) songsTableSection.classList.remove('hidden');
+                if (playlistsSection) playlistsSection.classList.add('hidden');
                 if (artistsSection) artistsSection.classList.add('hidden');
                 if (albumsSection) albumsSection.classList.add('hidden');
 
                 displayedSongs = [...mySongs];
+                renderSongList(displayedSongs);
+            } else if (currentTab === 'favorites') {
+                if (btnBack) btnBack.classList.add('hidden');
+                if (title) title.textContent = 'Bài hát yêu thích ❤️';
+                if (subtitle) subtitle.textContent = 'Các bài hát bạn đã bấm thả tim';
+
+                const favSongs = mySongs.filter(s => favoriteSongIds.has(s.id));
+                if (countBadge) countBadge.textContent = `${favSongs.length} bài`;
+
+                if (songsTableSection) songsTableSection.classList.remove('hidden');
+                if (playlistsSection) playlistsSection.classList.add('hidden');
+                if (artistsSection) artistsSection.classList.add('hidden');
+                if (albumsSection) albumsSection.classList.add('hidden');
+
+                displayedSongs = favSongs;
+                renderSongList(displayedSongs);
+            } else if (currentTab === 'playlists') {
+                if (btnBack) btnBack.classList.add('hidden');
+                if (title) title.textContent = 'Danh sách phát (Playlists)';
+                if (subtitle) subtitle.textContent = 'Tạo và quản lý các danh sách phát của riêng bạn';
+                if (countBadge) countBadge.textContent = `${userPlaylists.length} playlist`;
+
+                if (songsTableSection) songsTableSection.classList.add('hidden');
+                if (playlistsSection) playlistsSection.classList.remove('hidden');
+                if (artistsSection) artistsSection.classList.add('hidden');
+                if (albumsSection) albumsSection.classList.add('hidden');
+
+                renderPlaylists();
+            } else if (currentTab === 'playlist_detail') {
+                if (btnBack) btnBack.classList.remove('hidden');
+                const backText = document.getElementById('backToGroupText');
+                if (backText) backText.textContent = 'Quay lại danh sách Playlists';
+                if (title) title.textContent = currentPlaylist ? currentPlaylist.name : 'Chi tiết Playlist';
+                if (subtitle) subtitle.textContent = currentPlaylist && currentPlaylist.description ? currentPlaylist.description : 'Danh sách các bài hát trong playlist';
+
+                if (songsTableSection) songsTableSection.classList.remove('hidden');
+                if (playlistsSection) playlistsSection.classList.add('hidden');
+                if (artistsSection) artistsSection.classList.add('hidden');
+                if (albumsSection) albumsSection.classList.add('hidden');
+
+                displayedSongs = currentPlaylist && currentPlaylist.songs ? currentPlaylist.songs : [];
+                if (countBadge) countBadge.textContent = `${displayedSongs.length} bài`;
                 renderSongList(displayedSongs);
             } else if (currentTab === 'artists') {
                 if (btnBack) btnBack.classList.add('hidden');
@@ -656,7 +1189,8 @@
                 if (subtitle) subtitle.textContent = 'Danh sách nghệ sĩ trong kho nhạc của bạn';
 
                 if (songsTableSection) songsTableSection.classList.add('hidden');
-                if (artistsSection) artistsSection.classList.remove('hidden');
+                if (playlistsSection) playlistsSection.classList.add('hidden');
+                if (artistsSection) artistsSection.classList.add('hidden');
                 if (albumsSection) albumsSection.classList.add('hidden');
 
                 renderArtists();
@@ -666,8 +1200,9 @@
                 if (subtitle) subtitle.textContent = 'Danh sách album trong kho nhạc của bạn';
 
                 if (songsTableSection) songsTableSection.classList.add('hidden');
+                if (playlistsSection) playlistsSection.classList.add('hidden');
                 if (artistsSection) artistsSection.classList.add('hidden');
-                if (albumsSection) albumsSection.classList.remove('hidden');
+                if (albumsSection) albumsSection.classList.add('hidden');
 
                 renderAlbums();
             } else if (currentTab === 'artist_detail') {
@@ -678,6 +1213,7 @@
                 if (subtitle) subtitle.textContent = `Các bài hát của nghệ sĩ ${selectedArtist}`;
 
                 if (songsTableSection) songsTableSection.classList.remove('hidden');
+                if (playlistsSection) playlistsSection.classList.add('hidden');
                 if (artistsSection) artistsSection.classList.add('hidden');
                 if (albumsSection) albumsSection.classList.add('hidden');
 
@@ -692,6 +1228,7 @@
                 if (subtitle) subtitle.textContent = `Các bài hát trong album ${selectedAlbum}`;
 
                 if (songsTableSection) songsTableSection.classList.remove('hidden');
+                if (playlistsSection) playlistsSection.classList.add('hidden');
                 if (artistsSection) artistsSection.classList.add('hidden');
                 if (albumsSection) albumsSection.classList.add('hidden');
 
@@ -706,6 +1243,8 @@
                 switchMainTab('artists');
             } else if (currentTab === 'album_detail') {
                 switchMainTab('albums');
+            } else if (currentTab === 'playlist_detail') {
+                switchMainTab('playlists');
             } else {
                 switchMainTab('all');
             }
@@ -879,13 +1418,33 @@
                     <td class="py-3 px-4 text-center">${getFormatBadge(song.format)}</td>
                     <td class="py-3 px-4 text-center text-xs text-gray-400 font-mono">${duration}</td>
                     <td class="py-3 px-4 text-right">
-                        <div class="flex items-center justify-end gap-2">
+                        <div class="flex items-center justify-end gap-1.5">
+                            <!-- Nút Thả tim (Favorite) -->
+                            <button onclick="event.stopPropagation(); toggleFavorite(${song.id})" class="w-8 h-8 rounded-full bg-[#242424] hover:bg-rose-500/20 text-gray-400 hover:text-rose-500 flex items-center justify-center transition" title="${favoriteSongIds.has(song.id) ? 'Bỏ thích' : 'Yêu thích'}">
+                                <i class="${favoriteSongIds.has(song.id) ? 'fa-solid fa-heart text-rose-500' : 'fa-regular fa-heart'} text-xs"></i>
+                            </button>
+                            <!-- Nút Thêm vào playlist -->
+                            <button onclick="event.stopPropagation(); openAddToPlaylistModal(${song.id}, '${escapeHtml(song.title).replace(/'/g, "\\'")}')" class="w-8 h-8 rounded-full bg-[#242424] hover:bg-amber-500/20 hover:text-amber-400 text-gray-400 flex items-center justify-center transition" title="Thêm vào Playlist">
+                                <i class="fa-solid fa-list-plus text-xs"></i>
+                            </button>
+                            <!-- Nút Thêm vào hàng đợi (Queue) -->
+                            <button onclick="event.stopPropagation(); addToQueue(${song.id})" class="w-8 h-8 rounded-full bg-[#242424] hover:bg-emerald-500/20 hover:text-emerald-400 text-gray-400 flex items-center justify-center transition" title="Thêm vào hàng đợi phát">
+                                <i class="fa-solid fa-layer-group text-xs"></i>
+                            </button>
+                            <!-- Nút Phát -->
                             <button onclick="event.stopPropagation(); playSongById(${song.id})" class="w-8 h-8 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center transition shadow">
                                 <i class="fa-solid fa-play text-xs ml-0.5"></i>
                             </button>
-                            <button onclick="event.stopPropagation(); deleteSong(${song.id})" class="w-8 h-8 rounded-full bg-[#2a2a2a] hover:bg-red-500/20 hover:text-red-400 text-gray-400 flex items-center justify-center transition" title="Xóa bài hát khỏi kho">
-                                <i class="fa-solid fa-trash-can text-xs"></i>
-                            </button>
+                            <!-- Nút Xóa (Nếu đang xem playlist thì xóa khỏi playlist, nếu xem kho nhạc thì xóa khỏi hệ thống) -->
+                            ${currentTab === 'playlist_detail' ? `
+                                <button onclick="event.stopPropagation(); removeSongFromCurrentPlaylist(${song.id})" class="w-8 h-8 rounded-full bg-[#2a2a2a] hover:bg-red-500/20 hover:text-red-400 text-gray-400 flex items-center justify-center transition" title="Xóa khỏi playlist này">
+                                    <i class="fa-solid fa-xmark text-xs"></i>
+                                </button>
+                            ` : `
+                                <button onclick="event.stopPropagation(); deleteSong(${song.id})" class="w-8 h-8 rounded-full bg-[#2a2a2a] hover:bg-red-500/20 hover:text-red-400 text-gray-400 flex items-center justify-center transition" title="Xóa bài hát khỏi kho">
+                                    <i class="fa-solid fa-trash-can text-xs"></i>
+                                </button>
+                            `}
                         </div>
                     </td>
                 `;
@@ -895,7 +1454,7 @@
             });
         }
 
-        // ================= PLAYER CONTROLS =================
+        // ================= PLAYER CONTROLS & ADVANCED PLAYBACK =================
         function playSongById(id) {
             const idx = mySongs.findIndex(s => s.id === id);
             if (idx >= 0) playSongByIndex(idx);
@@ -908,6 +1467,10 @@
 
         function playSongByIndex(index) {
             if (index < 0 || index >= mySongs.length) return;
+            if (currentRoom && currentUser && currentRoom.hostId !== currentUser.id) {
+                showToast('Chỉ chủ phòng mới có quyền đổi bài hát trong phòng nghe chung!', 'info');
+                return;
+            }
             currentSongIndex = index;
             const song = mySongs[index];
             const token = localStorage.getItem('token');
@@ -938,14 +1501,40 @@
                 playerFormatBadge.classList.remove('hidden');
             }
 
-            if (currentTab === 'all' || currentTab === 'artist_detail' || currentTab === 'album_detail') {
+            updatePlayerFavIcon();
+
+            // Nếu đang trong phòng nghe chung và là chủ phòng, phát tán sự kiện CHANGE_SONG
+            if (currentRoom && currentUser && currentRoom.hostId === currentUser.id) {
+                currentRoom.currentSongId = song.id;
+                currentRoom.currentSongTitle = song.title;
+                currentRoom.currentSongArtist = song.artist;
+                currentRoom.isPlaying = true;
+                updateRoomSongDisplay(song.id, song.title, song.artist);
+                sendRoomAction('CHANGE_SONG', {
+                    songId: song.id,
+                    songTitle: song.title,
+                    songArtist: song.artist,
+                    currentTime: 0,
+                    isPlaying: true
+                });
+            }
+
+            if (currentTab === 'all' || currentTab === 'favorites' || currentTab === 'playlist_detail' || currentTab === 'artist_detail' || currentTab === 'album_detail') {
                 renderSongList(displayedSongs);
             }
         }
 
         function togglePlayPause() {
+            if (currentRoom && currentUser && currentRoom.hostId !== currentUser.id) {
+                showToast('Chỉ chủ phòng mới có quyền điều khiển phát nhạc!', 'info');
+                return;
+            }
             if (!audio.src) {
-                if (mySongs.length > 0) playSongByIndex(0);
+                if (displayedSongs.length > 0) {
+                    playSongById(displayedSongs[0].id);
+                } else if (mySongs.length > 0) {
+                    playSongByIndex(0);
+                }
                 return;
             }
 
@@ -957,18 +1546,117 @@
         }
 
         function playPrevSong() {
+            if (currentRoom && currentUser && currentRoom.hostId !== currentUser.id) {
+                showToast('Chỉ chủ phòng mới có quyền chuyển bài hát!', 'info');
+                return;
+            }
+            if (mySongs.length === 0) return;
+
+            // Tua lại từ đầu bài nếu đã nghe hơn 3 giây
+            if (audio.currentTime > 3) {
+                audio.currentTime = 0;
+                return;
+            }
+
+            if (isShuffle) {
+                const randIdx = Math.floor(Math.random() * mySongs.length);
+                playSongByIndex(randIdx);
+                return;
+            }
+
             if (currentSongIndex > 0) {
                 playSongByIndex(currentSongIndex - 1);
-            } else if (mySongs.length > 0) {
+            } else {
                 playSongByIndex(mySongs.length - 1);
             }
         }
 
-        function playNextSong() {
-            if (currentSongIndex < mySongs.length - 1) {
-                playSongByIndex(currentSongIndex + 1);
-            } else if (mySongs.length > 0) {
-                playSongByIndex(0);
+        function playNextSong(isAutoEnd = false) {
+            if (currentRoom && currentUser && currentRoom.hostId !== currentUser.id) {
+                if (!isAutoEnd) {
+                    showToast('Chỉ chủ phòng mới có quyền chuyển bài hát!', 'info');
+                }
+                return;
+            }
+            if (mySongs.length === 0) return;
+
+            // 1. Nếu đang bật Repeat One và bài vừa kết thúc tự động
+            if (isAutoEnd && repeatMode === 'one') {
+                audio.currentTime = 0;
+                audio.play();
+                return;
+            }
+
+            // 2. Nếu có bài hát trong Hàng đợi (Queue)
+            if (playQueue.length > 0) {
+                const nextQueuedSong = playQueue.shift();
+                renderQueueDrawer();
+                playSongById(nextQueuedSong.id);
+                return;
+            }
+
+            // 3. Nếu đang bật Shuffle (Phát ngẫu nhiên)
+            if (isShuffle) {
+                let nextIdx = Math.floor(Math.random() * mySongs.length);
+                if (mySongs.length > 1 && nextIdx === currentSongIndex) {
+                    nextIdx = (nextIdx + 1) % mySongs.length;
+                }
+                playSongByIndex(nextIdx);
+                return;
+            }
+
+            // 4. Phát theo thứ tự danh sách hiển thị hoặc toàn kho
+            const listToUse = (displayedSongs && displayedSongs.length > 0) ? displayedSongs : mySongs;
+            const currentInList = listToUse.findIndex(s => s.id === mySongs[currentSongIndex]?.id);
+
+            if (currentInList >= 0 && currentInList < listToUse.length - 1) {
+                playSongById(listToUse[currentInList + 1].id);
+            } else if (repeatMode === 'all') {
+                playSongById(listToUse[0].id);
+            } else if (!isAutoEnd) {
+                // Bấm Next thủ công khi ở cuối bài -> vòng lại bài đầu
+                playSongById(listToUse[0].id);
+            }
+        }
+
+        function toggleShuffle() {
+            isShuffle = !isShuffle;
+            const btn = document.getElementById('shuffleBtn');
+            if (btn) {
+                if (isShuffle) {
+                    btn.className = 'text-emerald-400 font-bold hover:text-emerald-300 transition text-sm p-1.5';
+                    btn.title = 'Phát ngẫu nhiên (Shuffle: BẬT)';
+                    showToast('Đã BẬT phát ngẫu nhiên (Shuffle)', 'info');
+                } else {
+                    btn.className = 'text-gray-400 hover:text-white transition text-sm p-1.5';
+                    btn.title = 'Phát ngẫu nhiên (Shuffle: TẮT)';
+                    showToast('Đã TẮT phát ngẫu nhiên', 'info');
+                }
+            }
+        }
+
+        function toggleRepeat() {
+            const btn = document.getElementById('repeatBtn');
+            const oneBadge = document.getElementById('repeatOneBadge');
+
+            if (repeatMode === 'off') {
+                repeatMode = 'all';
+                btn.className = 'text-emerald-400 font-bold hover:text-emerald-300 transition text-sm p-1.5 relative';
+                btn.title = 'Lặp lại toàn bộ danh sách (Repeat All)';
+                if (oneBadge) oneBadge.classList.add('hidden');
+                showToast('Chế độ: Lặp lại danh sách', 'info');
+            } else if (repeatMode === 'all') {
+                repeatMode = 'one';
+                btn.className = 'text-emerald-400 font-bold hover:text-emerald-300 transition text-sm p-1.5 relative';
+                btn.title = 'Lặp lại 1 bài hát hiện tại (Repeat One)';
+                if (oneBadge) oneBadge.classList.remove('hidden');
+                showToast('Chế độ: Lặp lại 1 bài', 'info');
+            } else {
+                repeatMode = 'off';
+                btn.className = 'text-gray-400 hover:text-white transition text-sm p-1.5 relative';
+                btn.title = 'Chế độ lặp lại (TẮT)';
+                if (oneBadge) oneBadge.classList.add('hidden');
+                showToast('Đã tắt chế độ lặp lại', 'info');
             }
         }
 
@@ -976,7 +1664,17 @@
             audio.addEventListener('play', () => {
                 isPlaying = true;
                 playPauseIcon.className = 'fa-solid fa-pause text-sm';
-                if (currentTab === 'all' || currentTab === 'artist_detail' || currentTab === 'album_detail') {
+                if (!isSyncingFromRemote && currentRoom && currentUser && currentRoom.hostId === currentUser.id) {
+                    const curSong = (currentSongIndex >= 0 && mySongs[currentSongIndex]) ? mySongs[currentSongIndex] : null;
+                    sendRoomAction('PLAY', {
+                        songId: currentRoom.currentSongId || (curSong ? curSong.id : null),
+                        songTitle: currentRoom.currentSongTitle || (curSong ? curSong.title : null),
+                        songArtist: currentRoom.currentSongArtist || (curSong ? curSong.artist : null),
+                        currentTime: audio.currentTime,
+                        isPlaying: true
+                    });
+                }
+                if (currentTab === 'all' || currentTab === 'favorites' || currentTab === 'playlist_detail' || currentTab === 'artist_detail' || currentTab === 'album_detail') {
                     renderSongList(displayedSongs);
                 }
             });
@@ -984,11 +1682,15 @@
             audio.addEventListener('pause', () => {
                 isPlaying = false;
                 playPauseIcon.className = 'fa-solid fa-play text-sm ml-0.5';
-                if (currentTab === 'all' || currentTab === 'artist_detail' || currentTab === 'album_detail') {
+                if (!isSyncingFromRemote && currentRoom && currentUser && currentRoom.hostId === currentUser.id) {
+                    sendRoomAction('PAUSE', { currentTime: audio.currentTime, isPlaying: false });
+                }
+                if (currentTab === 'all' || currentTab === 'favorites' || currentTab === 'playlist_detail' || currentTab === 'artist_detail' || currentTab === 'album_detail') {
                     renderSongList(displayedSongs);
                 }
             });
 
+            let lastHostSyncTime = 0;
             audio.addEventListener('timeupdate', () => {
                 if (!audio.duration) return;
                 const current = audio.currentTime;
@@ -996,10 +1698,23 @@
                 progressBar.value = (current / total) * 100;
                 currentTimeText.textContent = formatTime(current);
                 durationTimeText.textContent = formatTime(total);
+
+                // Heartbeat đồng bộ thời gian thực từ chủ phòng tới mọi thành viên (mỗi 3 giây)
+                if (currentRoom && currentUser && currentRoom.hostId === currentUser.id && isPlaying) {
+                    const now = Date.now();
+                    if (now - lastHostSyncTime >= 3000) {
+                        lastHostSyncTime = now;
+                        sendRoomAction('TIME_UPDATE', {
+                            songId: currentRoom.currentSongId,
+                            currentTime: audio.currentTime,
+                            isPlaying: true
+                        });
+                    }
+                }
             });
 
             audio.addEventListener('ended', () => {
-                playNextSong();
+                playNextSong(true);
             });
 
             audio.addEventListener('error', (e) => {
@@ -1010,7 +1725,15 @@
 
         function onSeek(percentage) {
             if (!audio.duration) return;
+            if (currentRoom && currentUser && currentRoom.hostId !== currentUser.id) {
+                showToast('Chỉ chủ phòng mới có quyền tua bài hát!', 'info');
+                progressBar.value = (audio.currentTime / audio.duration) * 100;
+                return;
+            }
             audio.currentTime = (percentage / 100) * audio.duration;
+            if (currentRoom && currentUser && currentRoom.hostId === currentUser.id && !isSyncingFromRemote) {
+                sendRoomAction('SEEK', { currentTime: audio.currentTime });
+            }
         }
 
         function onVolumeChange(vol) {
@@ -1132,6 +1855,364 @@
             }
         }
 
+        // ================= FAVORITES LOGIC =================
+        async function toggleFavorite(songId) {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+
+            try {
+                const res = await fetch(`/api/playlists/favorites/toggle/${songId}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+
+                if (!res.ok) throw new Error('Không thể cập nhật danh sách yêu thích');
+                const data = await res.json();
+
+                if (data.isFavorite) {
+                    favoriteSongIds.add(songId);
+                    showToast('Đã thêm bài hát vào danh sách Yêu thích ❤️', 'success');
+                } else {
+                    favoriteSongIds.delete(songId);
+                    showToast('Đã xóa bài hát khỏi danh sách Yêu thích', 'info');
+                }
+
+                updatePlayerFavIcon();
+                if (currentTab === 'favorites') {
+                    displayedSongs = mySongs.filter(s => favoriteSongIds.has(s.id));
+                    const countBadge = document.getElementById('songCountBadge');
+                    if (countBadge) countBadge.textContent = `${displayedSongs.length} bài`;
+                }
+                renderSongList(displayedSongs);
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        function toggleFavoriteCurrentSong() {
+            if (currentSongIndex >= 0 && mySongs[currentSongIndex]) {
+                toggleFavorite(mySongs[currentSongIndex].id);
+            }
+        }
+
+        function updatePlayerFavIcon() {
+            const favIcon = document.getElementById('playerFavIcon');
+            const favBtn = document.getElementById('playerFavBtn');
+            if (!favIcon || !favBtn) return;
+
+            if (currentSongIndex >= 0 && mySongs[currentSongIndex]) {
+                const curSongId = mySongs[currentSongIndex].id;
+                if (favoriteSongIds.has(curSongId)) {
+                    favIcon.className = 'fa-solid fa-heart text-rose-500';
+                    favBtn.title = 'Bỏ thích';
+                } else {
+                    favIcon.className = 'fa-regular fa-heart text-gray-400';
+                    favBtn.title = 'Thêm vào yêu thích';
+                }
+            } else {
+                favIcon.className = 'fa-regular fa-heart text-gray-500';
+            }
+        }
+
+        // ================= PLAYLISTS LOGIC =================
+        function openCreatePlaylistModal() {
+            document.getElementById('createPlaylistModal').classList.remove('hidden');
+            document.getElementById('newPlaylistName').value = '';
+            document.getElementById('newPlaylistDesc').value = '';
+        }
+
+        function closeCreatePlaylistModal() {
+            document.getElementById('createPlaylistModal').classList.add('hidden');
+        }
+
+        async function handleCreatePlaylist(e) {
+            e.preventDefault();
+            const name = document.getElementById('newPlaylistName').value.trim();
+            const description = document.getElementById('newPlaylistDesc').value.trim();
+            const token = localStorage.getItem('token');
+
+            if (!name) return;
+
+            try {
+                const res = await fetch('/api/playlists', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify({ name, description })
+                });
+
+                if (!res.ok) throw new Error('Không thể tạo playlist');
+                const created = await res.json();
+                closeCreatePlaylistModal();
+                showToast(`Đã tạo playlist "${created.name}" thành công!`, 'success');
+
+                await fetchPlaylists();
+                if (currentTab === 'playlists') {
+                    renderPlaylists();
+                }
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        function renderPlaylists() {
+            const grid = document.getElementById('playlistsGrid');
+            if (!grid) return;
+            grid.innerHTML = '';
+
+            const badge = document.getElementById('songCountBadge');
+            if (badge) badge.textContent = `${userPlaylists.length} playlist`;
+
+            if (userPlaylists.length === 0) {
+                grid.innerHTML = `
+                    <div class="col-span-full py-12 text-center text-gray-500">
+                        <i class="fa-solid fa-folder-open text-4xl mb-3"></i>
+                        <p>Bạn chưa tạo danh sách phát nào</p>
+                        <button onclick="openCreatePlaylistModal()" class="mt-3 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-semibold rounded-xl text-xs">
+                            Tạo Playlist đầu tiên
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            userPlaylists.forEach(pl => {
+                const card = document.createElement('div');
+                card.className = 'group bg-[#1e1e1e] hover:bg-[#252525] p-4 rounded-2xl transition cursor-pointer shadow-md border border-transparent hover:border-[#333] flex flex-col justify-between';
+
+                card.innerHTML = `
+                    <div class="relative mb-3 aspect-square rounded-xl bg-gradient-to-tr from-amber-600/40 via-orange-800/30 to-purple-900/40 border border-[#333] flex items-center justify-center overflow-hidden">
+                        <i class="fa-solid fa-list-check text-4xl text-amber-400"></i>
+                        <button onclick="event.stopPropagation(); playPlaylistById(${pl.id})" class="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition transform group-hover:translate-y-0 translate-y-2" title="Phát playlist">
+                            <i class="fa-solid fa-play text-sm ml-0.5"></i>
+                        </button>
+                    </div>
+                    <div>
+                        <div class="flex items-center justify-between gap-1">
+                            <h3 class="font-bold text-white group-hover:text-emerald-400 transition truncate text-sm flex-1">${escapeHtml(pl.name)}</h3>
+                            <button onclick="event.stopPropagation(); deletePlaylistById(${pl.id})" class="text-gray-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition" title="Xóa playlist">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </div>
+                        <p class="text-xs text-gray-400 truncate mt-0.5">${escapeHtml(pl.description || 'Không có mô tả')}</p>
+                        <p class="text-[11px] text-emerald-400/80 font-mono mt-1">${pl.songCount} bài hát</p>
+                    </div>
+                `;
+
+                card.onclick = () => openPlaylistDetail(pl.id);
+                grid.appendChild(card);
+            });
+        }
+
+        async function openPlaylistDetail(playlistId) {
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch(`/api/playlists/${playlistId}`, {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (!res.ok) throw new Error('Không thể tải chi tiết playlist');
+                currentPlaylist = await res.json();
+                currentTab = 'playlist_detail';
+                refreshCurrentView();
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        async function playPlaylistById(playlistId) {
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch(`/api/playlists/${playlistId}`, {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (!res.ok) throw new Error('Không thể phát playlist');
+                const pl = await res.json();
+                if (pl.songs && pl.songs.length > 0) {
+                    currentPlaylist = pl;
+                    playSongById(pl.songs[0].id);
+                } else {
+                    showToast('Playlist này chưa có bài hát nào', 'info');
+                }
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        async function deletePlaylistById(playlistId) {
+            if (!confirm('Bạn có chắc muốn xóa playlist này? (Các bài hát gốc trong kho sẽ không bị xóa)')) return;
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch(`/api/playlists/${playlistId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (!res.ok) throw new Error('Không thể xóa playlist');
+                showToast('Đã xóa playlist', 'success');
+                await fetchPlaylists();
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        async function removeSongFromCurrentPlaylist(songId) {
+            if (!currentPlaylist) return;
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch(`/api/playlists/${currentPlaylist.id}/songs/${songId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (!res.ok) throw new Error('Không thể xóa bài hát khỏi playlist');
+                currentPlaylist = await res.json();
+                showToast('Đã xóa bài hát khỏi playlist', 'success');
+                refreshCurrentView();
+                fetchPlaylists(); // update count
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        function openAddToPlaylistModal(songId, songTitle) {
+            targetSongForPlaylist = songId;
+            document.getElementById('targetSongTitle').textContent = `Bài hát: ${songTitle}`;
+            const listEl = document.getElementById('playlistSelectList');
+            listEl.innerHTML = '';
+
+            if (userPlaylists.length === 0) {
+                listEl.innerHTML = `
+                    <div class="text-center py-6 text-gray-500 text-xs">
+                        Bạn chưa có playlist nào. Hãy tạo playlist mới trước nhé!
+                    </div>
+                `;
+            } else {
+                userPlaylists.forEach(pl => {
+                    const row = document.createElement('div');
+                    row.className = 'flex items-center justify-between p-3 rounded-xl bg-[#252525] hover:bg-[#303030] cursor-pointer transition';
+                    row.innerHTML = `
+                        <div class="truncate">
+                            <h4 class="font-bold text-sm text-white">${escapeHtml(pl.name)}</h4>
+                            <p class="text-xs text-gray-400 font-mono">${pl.songCount} bài hát</p>
+                        </div>
+                        <button class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs rounded-lg transition">
+                            Thêm
+                        </button>
+                    `;
+                    row.onclick = () => addSongToSpecificPlaylist(pl.id, pl.name);
+                    listEl.appendChild(row);
+                });
+            }
+
+            document.getElementById('addToPlaylistModal').classList.remove('hidden');
+        }
+
+        function closeAddToPlaylistModal() {
+            document.getElementById('addToPlaylistModal').classList.add('hidden');
+            targetSongForPlaylist = null;
+        }
+
+        async function addSongToSpecificPlaylist(playlistId, playlistName) {
+            if (!targetSongForPlaylist) return;
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch(`/api/playlists/${playlistId}/songs/${targetSongForPlaylist}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+
+                if (!res.ok) throw new Error('Không thể thêm vào playlist');
+                showToast(`Đã thêm vào danh sách "${playlistName}"!`, 'success');
+                closeAddToPlaylistModal();
+                fetchPlaylists();
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        // ================= QUEUE LOGIC =================
+        function toggleQueuePanel() {
+            const drawer = document.getElementById('queueDrawer');
+            if (drawer) {
+                drawer.classList.toggle('translate-x-full');
+            }
+        }
+
+        function addToQueue(songId) {
+            const song = mySongs.find(s => s.id === songId);
+            if (!song) return;
+
+            playQueue.push(song);
+            renderQueueDrawer();
+            showToast(`Đã thêm "${song.title}" vào hàng đợi tiếp theo`, 'info');
+        }
+
+        function clearQueue() {
+            playQueue = [];
+            renderQueueDrawer();
+            showToast('Đã xóa toàn bộ hàng đợi', 'info');
+        }
+
+        function removeSongFromQueue(index) {
+            playQueue.splice(index, 1);
+            renderQueueDrawer();
+        }
+
+        function renderQueueDrawer() {
+            const listEl = document.getElementById('queueSongList');
+            const countEl = document.getElementById('queueDrawerCount');
+            const badgeEl = document.getElementById('queueBadge');
+
+            if (countEl) countEl.textContent = `(${playQueue.length})`;
+            if (badgeEl) {
+                if (playQueue.length > 0) {
+                    badgeEl.textContent = playQueue.length;
+                    badgeEl.classList.remove('hidden');
+                } else {
+                    badgeEl.classList.add('hidden');
+                }
+            }
+
+            if (!listEl) return;
+            listEl.innerHTML = '';
+
+            if (playQueue.length === 0) {
+                listEl.innerHTML = `
+                    <div class="text-center py-16 text-gray-500 text-xs">
+                        <i class="fa-solid fa-list-ol text-3xl mb-2"></i>
+                        <p>Hàng đợi đang trống</p>
+                        <p class="text-[11px] text-gray-600 mt-1">Bấm biểu tượng hàng đợi trên bất kỳ bài hát nào để đưa vào danh sách phát tiếp theo.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            playQueue.forEach((song, idx) => {
+                const item = document.createElement('div');
+                item.className = 'flex items-center justify-between p-2.5 rounded-xl bg-[#222] hover:bg-[#2a2a2a] transition';
+                item.innerHTML = `
+                    <div class="flex items-center gap-2.5 truncate flex-1 cursor-pointer" onclick="playSongFromQueue(${idx})">
+                        <span class="text-xs font-mono text-gray-500 w-4">${idx + 1}</span>
+                        <div class="truncate">
+                            <h4 class="text-xs font-semibold text-white truncate">${escapeHtml(song.title)}</h4>
+                            <p class="text-[11px] text-gray-400 truncate">${escapeHtml(song.artist || 'Chưa rõ')}</p>
+                        </div>
+                    </div>
+                    <button onclick="removeSongFromQueue(${idx})" class="text-gray-500 hover:text-red-400 p-1 transition" title="Xóa khỏi hàng đợi">
+                        <i class="fa-solid fa-xmark text-xs"></i>
+                    </button>
+                `;
+                listEl.appendChild(item);
+            });
+        }
+
+        function playSongFromQueue(index) {
+            if (index < 0 || index >= playQueue.length) return;
+            const song = playQueue.splice(index, 1)[0];
+            renderQueueDrawer();
+            playSongById(song.id);
+        }
+
         // ================= DELETE SONG =================
         async function deleteSong(songId) {
             if (!confirm('Bạn có chắc chắn muốn xóa bài hát này khỏi kho của bạn?')) return;
@@ -1155,42 +2236,968 @@
             }
         }
 
-        // ================= SEARCH =================
+        // ================= MULTI-ENTITY SEARCH LOGIC =================
+        let currentSearchFilter = 'all'; // 'all', 'songs', 'artists', 'albums', 'playlists'
+        let lastSearchQuery = '';
+
         function setupSearch() {
             const input = document.getElementById('searchInput');
             if (!input) return;
+
             input.addEventListener('input', (e) => {
                 const keyword = e.target.value.toLowerCase().trim();
+                lastSearchQuery = keyword;
+                const clearBtn = document.getElementById('clearSearchBtn');
+                if (clearBtn) clearBtn.classList.toggle('hidden', !keyword);
+
                 if (!keyword) {
                     refreshCurrentView();
                     return;
                 }
-                const filtered = mySongs.filter(song => 
-                    (song.title && song.title.toLowerCase().includes(keyword)) ||
-                    (song.artist && song.artist.toLowerCase().includes(keyword)) ||
-                    (song.album && song.album.toLowerCase().includes(keyword))
-                );
-
-                const songsTableSection = document.getElementById('songsTableSection');
-                const artistsSection = document.getElementById('artistsSection');
-                const albumsSection = document.getElementById('albumsSection');
-                const btnBack = document.getElementById('btnBackToGroup');
-                const title = document.getElementById('userLibraryTitle');
-                const subtitle = document.getElementById('userLibrarySubtitle');
-                const countBadge = document.getElementById('songCountBadge');
-
-                if (songsTableSection) songsTableSection.classList.remove('hidden');
-                if (artistsSection) artistsSection.classList.add('hidden');
-                if (albumsSection) albumsSection.classList.add('hidden');
-                if (btnBack) btnBack.classList.add('hidden');
-
-                if (title) title.textContent = `Tìm kiếm: "${keyword}"`;
-                if (subtitle) subtitle.textContent = `Tìm thấy ${filtered.length} kết quả`;
-                if (countBadge) countBadge.textContent = `${filtered.length} bài`;
-
-                displayedSongs = filtered;
-                renderSongList(filtered);
+                executeSearch(keyword);
             });
+        }
+
+        function clearSearch() {
+            const input = document.getElementById('searchInput');
+            const clearBtn = document.getElementById('clearSearchBtn');
+            if (input) input.value = '';
+            if (clearBtn) clearBtn.classList.add('hidden');
+            lastSearchQuery = '';
+            refreshCurrentView();
+        }
+
+        function setSearchFilter(filter) {
+            currentSearchFilter = filter;
+
+            const filterIds = ['filterSearchAll', 'filterSearchSongs', 'filterSearchArtists', 'filterSearchAlbums', 'filterSearchPlaylists'];
+            filterIds.forEach(id => {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                const isSelected = 
+                    (filter === 'all' && id === 'filterSearchAll') ||
+                    (filter === 'songs' && id === 'filterSearchSongs') ||
+                    (filter === 'artists' && id === 'filterSearchArtists') ||
+                    (filter === 'albums' && id === 'filterSearchAlbums') ||
+                    (filter === 'playlists' && id === 'filterSearchPlaylists');
+
+                if (isSelected) {
+                    btn.className = 'px-4 py-1.5 rounded-full text-xs font-semibold bg-emerald-500 text-black transition';
+                } else {
+                    btn.className = 'px-4 py-1.5 rounded-full text-xs font-semibold bg-[#282828] text-gray-300 hover:text-white transition';
+                }
+            });
+
+            if (lastSearchQuery) {
+                executeSearch(lastSearchQuery);
+            }
+        }
+
+        function executeSearch(keyword) {
+            const token = localStorage.getItem('token');
+
+            // 1. Tìm Bài hát
+            const matchedSongs = mySongs.filter(s => 
+                (s.title && s.title.toLowerCase().includes(keyword)) ||
+                (s.artist && s.artist.toLowerCase().includes(keyword)) ||
+                (s.album && s.album.toLowerCase().includes(keyword))
+            );
+
+            // 2. Gom và tìm Nghệ sĩ
+            const artistMap = {};
+            mySongs.forEach(s => {
+                const a = s.artist || 'Chưa rõ';
+                if (!artistMap[a]) {
+                    artistMap[a] = { name: a, songs: [], coverSongId: null };
+                }
+                artistMap[a].songs.push(s);
+                if (s.hasCover && !artistMap[a].coverSongId) {
+                    artistMap[a].coverSongId = s.id;
+                }
+            });
+            const matchedArtists = Object.values(artistMap).filter(a => 
+                a.name.toLowerCase().includes(keyword)
+            );
+
+            // 3. Gom và tìm Album
+            const albumMap = {};
+            mySongs.forEach(s => {
+                const alb = s.album || 'Single';
+                if (!albumMap[alb]) {
+                    albumMap[alb] = { name: alb, artist: s.artist || 'Chưa rõ', songs: [], coverSongId: null };
+                }
+                albumMap[alb].songs.push(s);
+                if (s.hasCover && !albumMap[alb].coverSongId) {
+                    albumMap[alb].coverSongId = s.id;
+                }
+            });
+            const matchedAlbums = Object.values(albumMap).filter(a => 
+                a.name.toLowerCase().includes(keyword) || (a.artist && a.artist.toLowerCase().includes(keyword))
+            );
+
+            // 4. Tìm Playlist
+            const matchedPlaylists = (userPlaylists || []).filter(p => 
+                (p.name && p.name.toLowerCase().includes(keyword)) ||
+                (p.description && p.description.toLowerCase().includes(keyword))
+            );
+
+            // Ẩn tất cả section thông thường, hiển thị searchResultsSection
+            const songsTableSection = document.getElementById('songsTableSection');
+            const playlistsSection = document.getElementById('playlistsSection');
+            const artistsSection = document.getElementById('artistsSection');
+            const albumsSection = document.getElementById('albumsSection');
+            const searchResultsSection = document.getElementById('searchResultsSection');
+            const emptyState = document.getElementById('emptyState');
+            const btnBack = document.getElementById('btnBackToGroup');
+            const title = document.getElementById('userLibraryTitle');
+            const subtitle = document.getElementById('userLibrarySubtitle');
+            const countBadge = document.getElementById('songCountBadge');
+
+            if (songsTableSection) songsTableSection.classList.add('hidden');
+            if (playlistsSection) playlistsSection.classList.add('hidden');
+            if (artistsSection) artistsSection.classList.add('hidden');
+            if (albumsSection) albumsSection.classList.add('hidden');
+            if (emptyState) emptyState.classList.add('hidden');
+            if (btnBack) btnBack.classList.add('hidden');
+            if (searchResultsSection) searchResultsSection.classList.remove('hidden');
+
+            const totalResults = matchedSongs.length + matchedArtists.length + matchedAlbums.length + matchedPlaylists.length;
+            if (title) title.textContent = `Kết quả tìm kiếm cho: "${keyword}"`;
+            if (subtitle) subtitle.textContent = `Tìm thấy ${totalResults} mục phù hợp`;
+            if (countBadge) countBadge.textContent = `${totalResults} kết quả`;
+
+            // Áp dụng bộ lọc Filter Chip
+            const showSongs = (currentSearchFilter === 'all' || currentSearchFilter === 'songs') && matchedSongs.length > 0;
+            const showArtists = (currentSearchFilter === 'all' || currentSearchFilter === 'artists') && matchedArtists.length > 0;
+            const showAlbums = (currentSearchFilter === 'all' || currentSearchFilter === 'albums') && matchedAlbums.length > 0;
+            const showPlaylists = (currentSearchFilter === 'all' || currentSearchFilter === 'playlists') && matchedPlaylists.length > 0;
+
+            const blockSongs = document.getElementById('searchSongsBlock');
+            const blockArtists = document.getElementById('searchArtistsBlock');
+            const blockAlbums = document.getElementById('searchAlbumsBlock');
+            const blockPlaylists = document.getElementById('searchPlaylistsBlock');
+            const noResults = document.getElementById('searchNoResults');
+
+            if (blockSongs) blockSongs.classList.toggle('hidden', !showSongs);
+            if (blockArtists) blockArtists.classList.toggle('hidden', !showArtists);
+            if (blockAlbums) blockAlbums.classList.toggle('hidden', !showAlbums);
+            if (blockPlaylists) blockPlaylists.classList.toggle('hidden', !showPlaylists);
+
+            const hasAnyVisible = showSongs || showArtists || showAlbums || showPlaylists;
+            if (noResults) noResults.classList.toggle('hidden', hasAnyVisible);
+
+            // Render Danh sách bài hát tìm thấy
+            if (showSongs) {
+                const countText = document.getElementById('searchSongsCount');
+                if (countText) countText.textContent = `(${matchedSongs.length})`;
+                const tbody = document.getElementById('searchSongListBody');
+                tbody.innerHTML = '';
+                matchedSongs.forEach((song, idx) => {
+                    const isCurrent = mySongs[currentSongIndex]?.id === song.id;
+                    const tr = document.createElement('tr');
+                    tr.className = `group hover:bg-[#222] transition cursor-pointer ${isCurrent ? 'bg-emerald-950/20 text-emerald-400' : ''}`;
+                    const duration = formatTime(song.durationInSeconds || 0);
+                    const coverThumbHtml = song.hasCover
+                        ? `<img src="/api/songs/cover/${song.id}?token=${encodeURIComponent(token)}" alt="Cover" class="w-full h-full object-cover" onerror="this.outerHTML='<i class=\\\'fa-solid fa-music text-gray-500 text-xs\\\'></i>'">`
+                        : `<i class="fa-solid fa-music text-gray-500 text-xs"></i>`;
+
+                    tr.innerHTML = `
+                        <td class="py-3 px-4 text-center font-mono text-xs text-gray-400">
+                            ${isCurrent && isPlaying ? '<i class="fa-solid fa-volume-high text-emerald-400 animate-pulse"></i>' : (idx + 1)}
+                        </td>
+                        <td class="py-3 px-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-[#252525] border border-[#353535] flex items-center justify-center">
+                                    ${coverThumbHtml}
+                                </div>
+                                <div class="truncate">
+                                    <div class="font-semibold text-white group-hover:text-emerald-400 transition truncate max-w-xs md:max-w-sm flex items-center gap-2">
+                                        <span>${escapeHtml(song.title)}</span>
+                                        ${isCurrent ? '<span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono">Đang phát</span>' : ''}
+                                    </div>
+                                    <div class="text-xs text-gray-400 truncate mt-0.5">${escapeHtml(song.artist || 'Chưa rõ')}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="py-3 px-4 text-gray-400 hidden md:table-cell truncate max-w-xs text-xs">
+                            ${escapeHtml(song.album || 'Single')}
+                        </td>
+                        <td class="py-3 px-4 text-center">${getFormatBadge(song.format)}</td>
+                        <td class="py-3 px-4 text-center text-xs text-gray-400 font-mono">${duration}</td>
+                        <td class="py-3 px-4 text-right">
+                            <div class="flex items-center justify-end gap-1.5">
+                                <button onclick="event.stopPropagation(); toggleFavorite(${song.id})" class="w-8 h-8 rounded-full bg-[#242424] hover:bg-rose-500/20 text-gray-400 hover:text-rose-500 flex items-center justify-center transition" title="${favoriteSongIds.has(song.id) ? 'Bỏ thích' : 'Yêu thích'}">
+                                    <i class="${favoriteSongIds.has(song.id) ? 'fa-solid fa-heart text-rose-500' : 'fa-regular fa-heart'} text-xs"></i>
+                                </button>
+                                <button onclick="event.stopPropagation(); openAddToPlaylistModal(${song.id}, '${escapeHtml(song.title).replace(/'/g, "\\'")}')" class="w-8 h-8 rounded-full bg-[#242424] hover:bg-amber-500/20 hover:text-amber-400 text-gray-400 flex items-center justify-center transition" title="Thêm vào Playlist">
+                                    <i class="fa-solid fa-list-plus text-xs"></i>
+                                </button>
+                                <button onclick="event.stopPropagation(); addToQueue(${song.id})" class="w-8 h-8 rounded-full bg-[#242424] hover:bg-emerald-500/20 hover:text-emerald-400 text-gray-400 flex items-center justify-center transition" title="Thêm vào hàng đợi phát">
+                                    <i class="fa-solid fa-layer-group text-xs"></i>
+                                </button>
+                                <button onclick="event.stopPropagation(); playSongById(${song.id})" class="w-8 h-8 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center transition shadow">
+                                    <i class="fa-solid fa-play text-xs ml-0.5"></i>
+                                </button>
+                                <button onclick="event.stopPropagation(); deleteSong(${song.id})" class="w-8 h-8 rounded-full bg-[#2a2a2a] hover:bg-red-500/20 hover:text-red-400 text-gray-400 flex items-center justify-center transition" title="Xóa bài hát khỏi kho">
+                                    <i class="fa-solid fa-trash-can text-xs"></i>
+                                </button>
+                            </div>
+                        </td>
+                    `;
+                    tr.onclick = () => playSongById(song.id);
+                    tbody.appendChild(tr);
+                });
+            }
+
+            // Render Danh sách Nghệ sĩ tìm thấy
+            if (showArtists) {
+                const countText = document.getElementById('searchArtistsCount');
+                if (countText) countText.textContent = `(${matchedArtists.length})`;
+                const grid = document.getElementById('searchArtistsGrid');
+                grid.innerHTML = '';
+                matchedArtists.forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = 'group bg-[#1e1e1e] hover:bg-[#252525] p-5 rounded-2xl transition cursor-pointer flex flex-col items-center text-center shadow-md border border-transparent hover:border-[#333]';
+                    const avatarHtml = item.coverSongId
+                        ? `<img src="/api/songs/cover/${item.coverSongId}?token=${encodeURIComponent(token)}" alt="${escapeHtml(item.name)}" class="w-24 h-24 rounded-full object-cover shadow-lg border border-[#383838]" onerror="this.outerHTML='<div class=\\\'w-24 h-24 rounded-full bg-gradient-to-tr from-purple-700 to-indigo-900 flex items-center justify-center text-white text-2xl font-bold shadow-lg\\\'>${escapeHtml(item.name.charAt(0).toUpperCase())}</div>'">`
+                        : `<div class="w-24 h-24 rounded-full bg-gradient-to-tr from-purple-700 to-indigo-900 flex items-center justify-center text-white text-2xl font-bold shadow-lg">${escapeHtml(item.name.charAt(0).toUpperCase())}</div>`;
+
+                    card.innerHTML = `
+                        <div class="relative mb-3">
+                            ${avatarHtml}
+                            <button onclick="event.stopPropagation(); playAllSongsOfList(${JSON.stringify(item.songs.map(s => s.id))})" class="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition transform group-hover:translate-y-0 translate-y-2" title="Phát tất cả">
+                                <i class="fa-solid fa-play text-xs ml-0.5"></i>
+                            </button>
+                        </div>
+                        <h3 class="font-bold text-white group-hover:text-emerald-400 transition truncate w-full text-sm">${escapeHtml(item.name)}</h3>
+                        <p class="text-xs text-gray-400 mt-1">${item.songs.length} bài hát</p>
+                    `;
+                    card.onclick = () => {
+                        selectedArtist = item.name;
+                        currentTab = 'artist_detail';
+                        clearSearch();
+                        refreshCurrentView();
+                    };
+                    grid.appendChild(card);
+                });
+            }
+
+            // Render Danh sách Album tìm thấy
+            if (showAlbums) {
+                const countText = document.getElementById('searchAlbumsCount');
+                if (countText) countText.textContent = `(${matchedAlbums.length})`;
+                const grid = document.getElementById('searchAlbumsGrid');
+                grid.innerHTML = '';
+                matchedAlbums.forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = 'group bg-[#1e1e1e] hover:bg-[#252525] p-4 rounded-2xl transition cursor-pointer shadow-md border border-transparent hover:border-[#333] flex flex-col justify-between';
+                    const coverHtml = item.coverSongId
+                        ? `<img src="/api/songs/cover/${item.coverSongId}?token=${encodeURIComponent(token)}" alt="${escapeHtml(item.name)}" class="w-full aspect-square rounded-xl object-cover shadow-lg border border-[#333]" onerror="this.outerHTML='<div class=\\\'w-full aspect-square rounded-xl bg-gradient-to-tr from-blue-900 to-indigo-950 flex items-center justify-center text-blue-400 text-3xl shadow-lg border border-[#333]\\\'><i class=\\\'fa-solid fa-compact-disc\\\'></i></div>'">`
+                        : `<div class="w-full aspect-square rounded-xl bg-gradient-to-tr from-blue-900 to-indigo-950 flex items-center justify-center text-blue-400 text-3xl shadow-lg border border-[#333]"><i class="fa-solid fa-compact-disc"></i></div>`;
+
+                    card.innerHTML = `
+                        <div class="relative mb-3">
+                            ${coverHtml}
+                            <button onclick="event.stopPropagation(); playAllSongsOfList(${JSON.stringify(item.songs.map(s => s.id))})" class="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition transform group-hover:translate-y-0 translate-y-2" title="Phát album">
+                                <i class="fa-solid fa-play text-sm ml-0.5"></i>
+                            </button>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-white group-hover:text-emerald-400 transition truncate text-sm">${escapeHtml(item.name)}</h3>
+                            <p class="text-xs text-gray-400 truncate mt-0.5">${escapeHtml(item.artist)}</p>
+                            <p class="text-[11px] text-emerald-400/80 font-mono mt-1">${item.songs.length} bài hát</p>
+                        </div>
+                    `;
+                    card.onclick = () => {
+                        selectedAlbum = item.name;
+                        currentTab = 'album_detail';
+                        clearSearch();
+                        refreshCurrentView();
+                    };
+                    grid.appendChild(card);
+                });
+            }
+
+            // Render Danh sách Playlist tìm thấy
+            if (showPlaylists) {
+                const countText = document.getElementById('searchPlaylistsCount');
+                if (countText) countText.textContent = `(${matchedPlaylists.length})`;
+                const grid = document.getElementById('searchPlaylistsGrid');
+                grid.innerHTML = '';
+                matchedPlaylists.forEach(pl => {
+                    const card = document.createElement('div');
+                    card.className = 'group bg-[#1e1e1e] hover:bg-[#252525] p-4 rounded-2xl transition cursor-pointer shadow-md border border-transparent hover:border-[#333] flex flex-col justify-between';
+
+                    card.innerHTML = `
+                        <div class="relative mb-3 aspect-square rounded-xl bg-gradient-to-tr from-amber-600/40 via-orange-800/30 to-purple-900/40 border border-[#333] flex items-center justify-center overflow-hidden">
+                            <i class="fa-solid fa-list-check text-4xl text-amber-400"></i>
+                            <button onclick="event.stopPropagation(); playPlaylistById(${pl.id})" class="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition transform group-hover:translate-y-0 translate-y-2" title="Phát playlist">
+                                <i class="fa-solid fa-play text-sm ml-0.5"></i>
+                            </button>
+                        </div>
+                        <div>
+                            <div class="flex items-center justify-between gap-1">
+                                <h3 class="font-bold text-white group-hover:text-emerald-400 transition truncate text-sm flex-1">${escapeHtml(pl.name)}</h3>
+                                <button onclick="event.stopPropagation(); deletePlaylistById(${pl.id})" class="text-gray-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition" title="Xóa playlist">
+                                    <i class="fa-solid fa-trash-can text-xs"></i>
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-400 truncate mt-0.5">${escapeHtml(pl.description || 'Không có mô tả')}</p>
+                            <p class="text-[11px] text-emerald-400/80 font-mono mt-1">${pl.songCount} bài hát</p>
+                        </div>
+                    `;
+
+                    card.onclick = () => {
+                        clearSearch();
+                        openPlaylistDetail(pl.id);
+                    };
+                    grid.appendChild(card);
+                });
+            }
+        }
+
+        // ================= PHÒNG NGHE CHUNG THỜI GIAN THỰC (SYNC ROOM) =================
+        function renderSyncRoomView() {
+            const lobbyView = document.getElementById('roomLobbyView');
+            const activeView = document.getElementById('activeRoomView');
+            const countBadge = document.getElementById('songCountBadge');
+
+            if (!lobbyView || !activeView) return;
+
+            if (!currentRoom) {
+                lobbyView.classList.remove('hidden');
+                activeView.classList.add('hidden');
+                if (countBadge && currentTab === 'sync_room') countBadge.textContent = 'Chưa vào phòng';
+                return;
+            }
+
+            lobbyView.classList.add('hidden');
+            activeView.classList.remove('hidden');
+            if (countBadge && currentTab === 'sync_room') countBadge.textContent = 'Đang trong phòng';
+
+            const nameEl = document.getElementById('activeRoomName');
+            const hostEl = document.getElementById('activeRoomHostText');
+            const codeEl = document.getElementById('activeRoomInviteCode');
+            const btnClose = document.getElementById('btnCloseRoomBtn');
+            const hostNotice = document.getElementById('hostNoticeText');
+            const hostPicker = document.getElementById('roomHostSongPicker');
+
+            if (nameEl) nameEl.textContent = currentRoom.name || 'Phòng Nghe Chung';
+            if (hostEl) hostEl.textContent = `Chủ phòng: ${currentRoom.hostName || currentRoom.hostUsername || '---'}`;
+            if (codeEl) codeEl.textContent = currentRoom.inviteCode || '------';
+
+            const isHost = (currentUser && currentRoom.hostId === currentUser.id);
+
+            if (isHost) {
+                if (btnClose) btnClose.classList.remove('hidden');
+                if (hostNotice) hostNotice.classList.remove('hidden');
+                if (hostPicker) {
+                    hostPicker.classList.remove('hidden');
+                    renderRoomSongPicker();
+                }
+            } else {
+                if (btnClose) btnClose.classList.add('hidden');
+                if (hostNotice) hostNotice.classList.add('hidden');
+                if (hostPicker) hostPicker.classList.add('hidden');
+            }
+
+            renderRoomMembers();
+            updateRoomSongDisplay(currentRoom.currentSongId, currentRoom.currentSongTitle, currentRoom.currentSongArtist);
+        }
+
+        function renderRoomSongPicker() {
+            const tbody = document.getElementById('roomSongPickerBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            if (!mySongs || mySongs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-gray-500 text-xs">Kho nhạc của bạn chưa có bài hát nào</td></tr>';
+                return;
+            }
+
+            mySongs.forEach((song, idx) => {
+                const isCurrent = (currentRoom && currentRoom.currentSongId === song.id);
+                const tr = document.createElement('tr');
+                tr.className = `hover:bg-[#202020] transition cursor-pointer text-xs ${isCurrent ? 'bg-emerald-950/30 text-emerald-400' : 'text-gray-300'}`;
+                tr.innerHTML = `
+                    <td class="py-2.5 px-4 text-center font-mono text-gray-500">${idx + 1}</td>
+                    <td class="py-2.5 px-4">
+                        <div class="font-semibold truncate max-w-xs ${isCurrent ? 'text-emerald-400' : 'text-white'}">${escapeHtml(song.title)}</div>
+                        <div class="text-[11px] text-gray-500 truncate">${escapeHtml(song.artist || 'Chưa rõ')}</div>
+                    </td>
+                    <td class="py-2.5 px-4 hidden sm:table-cell text-gray-400 truncate max-w-xs">${escapeHtml(song.album || 'Single')}</td>
+                    <td class="py-2.5 px-4 text-right">
+                        <button onclick="event.stopPropagation(); playSongById(${song.id})" class="px-2.5 py-1 rounded-lg ${isCurrent ? 'bg-emerald-500 text-black font-bold' : 'bg-[#282828] hover:bg-emerald-500 hover:text-black text-gray-300'} transition text-xs">
+                            ${isCurrent ? '<i class="fa-solid fa-volume-high"></i>' : '<i class="fa-solid fa-play"></i>'}
+                        </button>
+                    </td>
+                `;
+                tr.onclick = () => playSongById(song.id);
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderRoomMembers() {
+            const list = document.getElementById('roomMembersList');
+            const count = document.getElementById('roomMembersCount');
+            if (!list || !currentRoom) return;
+
+            const members = currentRoom.members || [];
+            if (count) count.textContent = `${members.length} người`;
+            list.innerHTML = '';
+
+            members.forEach(m => {
+                const isHost = (m.id === currentRoom.hostId);
+                const isMe = (currentUser && m.id === currentUser.id);
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between p-2.5 rounded-xl bg-[#252525] border border-[#333] text-xs';
+                const initialLetter = (m.displayName || m.username || 'U').charAt(0).toUpperCase();
+
+                div.innerHTML = `
+                    <div class="flex items-center gap-2.5 truncate">
+                        <div class="w-7 h-7 rounded-full ${isHost ? 'bg-amber-400 text-black' : 'bg-emerald-600 text-white'} flex items-center justify-center font-bold text-xs shrink-0">
+                            ${initialLetter}
+                        </div>
+                        <div class="truncate">
+                            <span class="font-semibold text-white">${escapeHtml(m.displayName || m.username)}</span>
+                            ${isMe ? '<span class="text-[10px] text-emerald-400 font-mono ml-1">(Bạn)</span>' : ''}
+                        </div>
+                    </div>
+                    <div>
+                        ${isHost ? '<span class="text-[10px] bg-amber-400/20 text-amber-400 border border-amber-400/30 px-2 py-0.5 rounded font-mono font-bold flex items-center gap-1"><i class="fa-solid fa-crown text-[9px]"></i> Chủ phòng</span>' : '<span class="text-[10px] text-gray-500 font-mono">Thành viên</span>'}
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function updateRoomSongDisplay(songId, title, artist) {
+            const roomTitle = document.getElementById('roomSongTitle');
+            const roomArtist = document.getElementById('roomSongArtist');
+            const roomCover = document.getElementById('roomCoverImg');
+            const roomDisc = document.getElementById('roomDiscFallback');
+            const token = localStorage.getItem('token');
+
+            if (roomTitle) roomTitle.textContent = title || 'Chưa chọn bài hát';
+            if (roomArtist) roomArtist.textContent = artist || '---';
+
+            if (songId) {
+                if (roomCover) {
+                    roomCover.src = `/api/songs/cover/${songId}?token=${encodeURIComponent(token)}`;
+                    roomCover.classList.remove('hidden');
+                }
+                if (roomDisc) roomDisc.classList.add('hidden');
+            } else {
+                if (roomCover) roomCover.classList.add('hidden');
+                if (roomDisc) roomDisc.classList.remove('hidden');
+            }
+        }
+
+        function connectRoomWebSocket(roomId) {
+            if (stompClient && stompClient.connected) {
+                try { stompClient.disconnect(); } catch (e) {}
+            }
+
+            const socket = new SockJS('/ws');
+            stompClient = Stomp.over(socket);
+            stompClient.debug = null; // Tắt console logs STOMP cho giao diện gọn gàng
+
+            const token = localStorage.getItem('token');
+            stompClient.connect({ 'Authorization': 'Bearer ' + token }, (frame) => {
+                stompClient.subscribe(`/topic/room/${roomId}`, (message) => {
+                    try {
+                        const action = JSON.parse(message.body);
+                        handleIncomingRoomAction(action);
+                    } catch (err) {
+                        console.error('Lỗi phân tích gói tin phòng:', err);
+                    }
+                });
+
+                // Nếu là khách vừa vào phòng, gửi yêu cầu đồng bộ trạng thái bài hát từ chủ phòng
+                if (currentRoom && currentUser && currentRoom.hostId !== currentUser.id) {
+                    sendRoomAction('SYNC_REQUEST', { currentTime: audio.currentTime || 0 });
+                }
+            }, (error) => {
+                console.error('Lỗi WebSocket phòng nghe chung:', error);
+                showToast('Mất kết nối với phòng nghe chung', 'error');
+            });
+        }
+
+        function sendRoomAction(actionType, data = {}) {
+            if (!stompClient || !stompClient.connected || !currentRoom) return;
+            const token = localStorage.getItem('token');
+            const payload = {
+                roomId: currentRoom.roomId,
+                actionType: actionType,
+                type: actionType,
+                token: token,
+                songId: data.songId || currentRoom.currentSongId,
+                songTitle: data.songTitle || currentRoom.currentSongTitle,
+                songArtist: data.songArtist || currentRoom.currentSongArtist,
+                currentTime: data.currentTime !== undefined ? data.currentTime : (audio.currentTime || 0),
+                isPlaying: data.isPlaying !== undefined ? data.isPlaying : !audio.paused,
+                senderUsername: currentUser ? currentUser.username : (data.senderUsername || 'anonymous'),
+                senderDisplayName: currentUser ? (currentUser.displayName || currentUser.username) : (data.senderDisplayName || 'Thành viên'),
+                chatMessage: data.chatMessage || null,
+                text: data.chatMessage || null,
+                timestamp: Date.now()
+            };
+            const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+            stompClient.send('/app/room/action', headers, JSON.stringify(payload));
+        }
+
+        function handleIncomingRoomAction(msg) {
+            if (!msg || !currentRoom) return;
+            const isHost = (currentUser && currentRoom.hostId === currentUser.id);
+            const actionType = msg.actionType || msg.type;
+
+            switch (actionType) {
+                case 'PLAY':
+                    currentRoom.isPlaying = true;
+                    if (!isHost) {
+                        isSyncingFromRemote = true;
+                        const networkElapsed = msg.timestamp ? Math.max(0, (Date.now() - msg.timestamp) / 1000) : 0;
+                        const targetTime = (msg.currentTime !== undefined ? msg.currentTime : 0) + networkElapsed;
+                        if (msg.songId && (!audio.src || !audio.src.includes(`/api/songs/stream/${msg.songId}`))) {
+                            playRoomSongLocal(msg.songId, msg.songTitle, msg.songArtist, targetTime, true);
+                        } else {
+                            if (msg.currentTime !== undefined && Math.abs(audio.currentTime - targetTime) > 1.0) {
+                                audio.currentTime = targetTime;
+                            }
+                            audio.play().then(() => {
+                                const banner = document.getElementById('autoplayBanner');
+                                if (banner) banner.remove();
+                            }).catch(e => {
+                                console.warn('Autoplay prevented:', e);
+                                showAutoplayNotice();
+                            });
+                        }
+                        setTimeout(() => { isSyncingFromRemote = false; }, 300);
+                    }
+                    break;
+
+                case 'PAUSE':
+                    currentRoom.isPlaying = false;
+                    if (!isHost) {
+                        isSyncingFromRemote = true;
+                        audio.pause();
+                        if (msg.currentTime !== undefined) {
+                            audio.currentTime = msg.currentTime;
+                        }
+                        setTimeout(() => { isSyncingFromRemote = false; }, 300);
+                    }
+                    break;
+
+                case 'SEEK':
+                    if (!isHost) {
+                        isSyncingFromRemote = true;
+                        if (msg.currentTime !== undefined) {
+                            audio.currentTime = msg.currentTime;
+                        }
+                        setTimeout(() => { isSyncingFromRemote = false; }, 300);
+                    }
+                    break;
+
+                case 'CHANGE_SONG':
+                    currentRoom.currentSongId = msg.songId;
+                    currentRoom.currentSongTitle = msg.songTitle;
+                    currentRoom.currentSongArtist = msg.songArtist;
+                    currentRoom.isPlaying = msg.isPlaying !== false;
+                    updateRoomSongDisplay(msg.songId, msg.songTitle, msg.songArtist);
+
+                    if (!isHost && msg.songId) {
+                        playRoomSongLocal(msg.songId, msg.songTitle, msg.songArtist, msg.currentTime || 0, msg.isPlaying !== false);
+                    }
+                    if (isHost) {
+                        renderRoomSongPicker();
+                    }
+                    break;
+
+                case 'MEMBER_JOINED':
+                    showToast(`${msg.senderDisplayName || msg.senderUsername || 'Một thành viên'} đã vào phòng`, 'info');
+                    refreshRoomState();
+                    break;
+
+                case 'MEMBER_LEFT':
+                    showToast(`${msg.senderDisplayName || msg.senderUsername || 'Một thành viên'} đã rời phòng`, 'info');
+                    refreshRoomState();
+                    break;
+
+                case 'ROOM_CLOSED':
+                    showToast('Phòng nghe chung đã bị chủ phòng đóng hoặc phiên kết thúc!', 'info');
+                    cleanupRoom();
+                    if (currentTab === 'sync_room') {
+                        renderSyncRoomView();
+                    }
+                    break;
+
+                case 'CHAT':
+                    appendRoomChatMessage(msg.senderDisplayName, msg.senderUsername, msg.chatMessage || msg.text);
+                    break;
+
+                case 'SYNC_REQUEST':
+                    if (isHost && audio.src && currentRoom.currentSongId) {
+                        sendRoomAction('SYNC_STATE', {
+                            songId: currentRoom.currentSongId,
+                            songTitle: currentRoom.currentSongTitle,
+                            songArtist: currentRoom.currentSongArtist,
+                            currentTime: audio.currentTime || 0,
+                            isPlaying: !audio.paused
+                        });
+                    }
+                    break;
+
+                case 'TIME_UPDATE':
+                case 'SYNC_STATE':
+                    if (!isHost) {
+                        currentRoom.currentSongId = msg.songId;
+                        currentRoom.currentSongTitle = msg.songTitle;
+                        currentRoom.currentSongArtist = msg.songArtist;
+                        currentRoom.isPlaying = msg.isPlaying !== false;
+
+                        const networkElapsed = msg.timestamp ? Math.max(0, (Date.now() - msg.timestamp) / 1000) : 0;
+                        const targetTime = (msg.currentTime !== undefined ? msg.currentTime : 0) + (msg.isPlaying !== false ? networkElapsed : 0);
+
+                        if (msg.songId && (!audio.src || !audio.src.includes(`/api/songs/stream/${msg.songId}`))) {
+                            playRoomSongLocal(msg.songId, msg.songTitle, msg.songArtist, targetTime, msg.isPlaying !== false);
+                        } else {
+                            if (msg.currentTime !== undefined && Math.abs(audio.currentTime - targetTime) > 1.0) {
+                                isSyncingFromRemote = true;
+                                audio.currentTime = targetTime;
+                                setTimeout(() => { isSyncingFromRemote = false; }, 300);
+                            }
+                            if (msg.isPlaying && audio.paused) {
+                                isSyncingFromRemote = true;
+                                audio.play().then(() => {
+                                    const banner = document.getElementById('autoplayBanner');
+                                    if (banner) banner.remove();
+                                }).catch(e => {
+                                    console.warn('Autoplay policy caught:', e);
+                                    showAutoplayNotice();
+                                });
+                                setTimeout(() => { isSyncingFromRemote = false; }, 300);
+                            } else if (!msg.isPlaying && !audio.paused) {
+                                isSyncingFromRemote = true;
+                                audio.pause();
+                                setTimeout(() => { isSyncingFromRemote = false; }, 300);
+                            }
+                        }
+                    }
+                    break;
+            }
+        }
+
+        function playRoomSongLocal(songId, title, artist, seekTime = 0, autoPlay = true) {
+            if (!songId) return;
+            const token = localStorage.getItem('token');
+            isSyncingFromRemote = true;
+
+            const streamUrl = `/api/songs/stream/${songId}?token=${encodeURIComponent(token)}`;
+            const isDifferentSong = (!audio.src || !audio.src.includes(`/api/songs/stream/${songId}`));
+            if (isDifferentSong) {
+                audio.src = streamUrl;
+            }
+
+            playerTitle.textContent = title || 'Phòng nghe chung';
+            playerArtist.textContent = artist || '---';
+
+            const playerCoverImg = document.getElementById('playerCoverImg');
+            const playerDiscFallback = document.getElementById('playerDiscFallback');
+            if (playerCoverImg) {
+                playerCoverImg.src = `/api/songs/cover/${songId}?token=${encodeURIComponent(token)}`;
+                playerCoverImg.classList.remove('hidden');
+            }
+            if (playerDiscFallback) playerDiscFallback.classList.add('hidden');
+
+            updateRoomSongDisplay(songId, title, artist);
+
+            const requestTime = Date.now();
+            const startPlayback = () => {
+                // Điều chỉnh thời gian seek bù đắp cho độ trễ tải mạng và đệm dữ liệu (buffering)
+                let adjustedSeek = seekTime;
+                if (autoPlay) {
+                    const elapsedBuffering = (Date.now() - requestTime) / 1000;
+                    adjustedSeek += Math.max(0, elapsedBuffering);
+                }
+                if (adjustedSeek > 0) {
+                    audio.currentTime = adjustedSeek;
+                }
+                if (autoPlay) {
+                    audio.play().then(() => {
+                        const banner = document.getElementById('autoplayBanner');
+                        if (banner) banner.remove();
+                    }).catch(e => {
+                        console.warn('Autoplay policy caught:', e);
+                        showAutoplayNotice();
+                    });
+                }
+                setTimeout(() => { isSyncingFromRemote = false; }, 300);
+            };
+
+            if (audio.readyState >= 1) {
+                startPlayback();
+            } else {
+                audio.addEventListener('loadedmetadata', startPlayback, { once: true });
+            }
+        }
+
+        function showAutoplayNotice() {
+            let banner = document.getElementById('autoplayBanner');
+            if (!banner) {
+                banner = document.createElement('div');
+                banner.id = 'autoplayBanner';
+                banner.className = 'fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 cursor-pointer animate-bounce transition border-2 border-white/80';
+                banner.innerHTML = `<i class="fa-solid fa-volume-high text-lg"></i><span>Chủ phòng đang phát nhạc! Bấm vào đây để nghe cùng 🎧</span>`;
+                banner.onclick = () => {
+                    audio.play().then(() => {
+                        banner.remove();
+                    }).catch(err => console.log(err));
+                };
+                document.body.appendChild(banner);
+            }
+        }
+
+        function appendRoomChatMessage(senderDisplayName, senderUsername, text) {
+            const container = document.getElementById('roomChatMessages');
+            if (!container || !text) return;
+
+            const welcome = container.querySelector('.text-gray-500.text-center');
+            if (welcome) welcome.remove();
+
+            const isMe = currentUser && (
+                (senderUsername && senderUsername === currentUser.username) ||
+                (senderDisplayName && senderDisplayName === (currentUser.displayName || currentUser.username))
+            );
+            const displayName = senderDisplayName || senderUsername || 'Ẩn danh';
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'} mb-2`;
+            msgDiv.innerHTML = `
+                <div class="flex items-center gap-1.5 px-1 mb-0.5">
+                    <span class="text-[10px] text-gray-400">${escapeHtml(displayName)}</span>
+                    ${isMe ? '<span class="text-[9px] bg-emerald-500/20 text-emerald-400 px-1 rounded font-mono font-bold">Bạn</span>' : ''}
+                </div>
+                <div class="px-3 py-1.5 rounded-2xl max-w-[85%] break-words ${isMe ? 'bg-emerald-600 text-white rounded-br-none shadow' : 'bg-[#282828] text-gray-200 border border-[#383838] rounded-bl-none'}">
+                    ${escapeHtml(text)}
+                </div>
+            `;
+            container.appendChild(msgDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function handleCreateRoom() {
+            const nameInput = document.getElementById('createRoomNameInput');
+            const name = nameInput ? nameInput.value.trim() : '';
+            const token = localStorage.getItem('token');
+            if (!token) {
+                openAuthModal('login');
+                return;
+            }
+            try {
+                const url = `/api/rooms/create?name=${encodeURIComponent(name || 'Phòng Nghe Cùng Nhau')}`;
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'Không thể tạo phòng');
+                currentRoom = data;
+                localStorage.setItem('activeRoomId', data.roomId);
+                localStorage.setItem('activeRoomTab', 'true');
+                if (nameInput) nameInput.value = '';
+                connectRoomWebSocket(data.roomId);
+                renderSyncRoomView();
+                showToast('Tạo phòng nghe chung thành công!', 'success');
+            } catch (e) {
+                showToast(e.message, 'error');
+            }
+        }
+
+        async function handleJoinRoom() {
+            const codeInput = document.getElementById('joinRoomCodeInput');
+            const code = codeInput ? codeInput.value.trim() : '';
+            if (!code) {
+                showToast('Vui lòng nhập mã phòng hoặc mã PIN 6 ký tự', 'error');
+                return;
+            }
+            const token = localStorage.getItem('token');
+            if (!token) {
+                openAuthModal('login');
+                return;
+            }
+            try {
+                const res = await fetch(`/api/rooms/join?codeOrId=${encodeURIComponent(code)}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'Không thể tham gia phòng');
+                currentRoom = data;
+                localStorage.setItem('activeRoomId', data.roomId);
+                localStorage.setItem('activeRoomTab', 'true');
+                if (codeInput) codeInput.value = '';
+                connectRoomWebSocket(data.roomId);
+                renderSyncRoomView();
+                showToast('Đã tham gia phòng thành công!', 'success');
+                if (data.currentSongId) {
+                    playRoomSongLocal(data.currentSongId, data.currentSongTitle, data.currentSongArtist, data.currentTime || 0, data.isPlaying);
+                }
+            } catch (e) {
+                showToast(e.message, 'error');
+            }
+        }
+
+        async function handleLeaveCurrentRoom() {
+            if (!currentRoom) return;
+            const token = localStorage.getItem('token');
+            try {
+                await fetch(`/api/rooms/${currentRoom.roomId}/leave`, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+            } catch (e) {}
+            cleanupRoom();
+            showToast('Bạn đã rời phòng', 'info');
+        }
+
+        async function handleCloseCurrentRoom() {
+            if (!currentRoom) return;
+            if (!confirm('Bạn có chắc chắn muốn đóng phòng nghe chung này? Tất cả thành viên sẽ bị ngắt kết nối và phiên sẽ bị đình chỉ.')) return;
+            const token = localStorage.getItem('token');
+            try {
+                await fetch(`/api/rooms/${currentRoom.roomId}/close`, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+            } catch (e) {}
+            cleanupRoom();
+            showToast('Đã đóng phòng nghe chung', 'info');
+        }
+
+        function openInviteUserModal() {
+            document.getElementById('inviteUserModal').classList.remove('hidden');
+            const input = document.getElementById('inviteUsernameInput');
+            if (input) {
+                input.value = '';
+                input.focus();
+            }
+        }
+
+        function closeInviteUserModal() {
+            document.getElementById('inviteUserModal').classList.add('hidden');
+        }
+
+        async function handleInviteUserSubmit(e) {
+            e.preventDefault();
+            if (!currentRoom) return;
+            const usernameInput = document.getElementById('inviteUsernameInput');
+            const username = usernameInput ? usernameInput.value.trim() : '';
+            if (!username) return;
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch(`/api/rooms/${currentRoom.roomId}/invite?username=${encodeURIComponent(username)}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'Không thể thêm người dùng vào phòng');
+                closeInviteUserModal();
+                showToast(`Đã thêm @${username} vào phòng thành công!`, 'success');
+                refreshRoomState();
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        function copyInviteCode() {
+            if (!currentRoom || !currentRoom.inviteCode) return;
+            navigator.clipboard.writeText(currentRoom.inviteCode).then(() => {
+                showToast(`Đã sao chép mã mời: ${currentRoom.inviteCode}`, 'success');
+            }).catch(() => {
+                showToast(`Mã mời của phòng: ${currentRoom.inviteCode}`, 'info');
+            });
+        }
+
+        function handleSendRoomChat(e) {
+            e.preventDefault();
+            const input = document.getElementById('roomChatInput');
+            if (!input) return;
+            const text = input.value.trim();
+            if (!text) return;
+            sendRoomAction('CHAT', { chatMessage: text });
+            input.value = '';
+        }
+
+        async function refreshRoomState() {
+            if (!currentRoom) return;
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch(`/api/rooms/${currentRoom.roomId}/state`, {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    currentRoom = data;
+                    renderRoomMembers();
+                    updateRoomSongDisplay(data.currentSongId, data.currentSongTitle, data.currentSongArtist);
+                }
+            } catch (e) {}
+        }
+
+        async function checkMyActiveRoom() {
+            if (!currentUser) return;
+            const token = localStorage.getItem('token');
+            if (!token) return;
+
+            try {
+                const res = await fetch('/api/rooms/my-active-room', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (res.ok && res.status === 200) {
+                    const room = await res.json();
+                    if (room && room.roomId) {
+                        currentRoom = room;
+                        localStorage.setItem('activeRoomId', room.roomId);
+                        connectRoomWebSocket(room.roomId);
+
+                        const countBadge = document.getElementById('songCountBadge');
+                        if (countBadge && currentTab === 'sync_room') {
+                            countBadge.textContent = 'Đang trong phòng';
+                        }
+
+                        // Nếu trước khi reload người dùng đang mở tab Phòng nghe chung
+                        const savedTab = localStorage.getItem('activeRoomTab');
+                        if (savedTab === 'true') {
+                            switchMainTab('sync_room');
+                        } else {
+                            renderSyncRoomView();
+                        }
+
+                        // Nếu phòng đang có bài hát đang phát, tải và đồng bộ phát nhạc ngay
+                        if (room.currentSongId) {
+                            playRoomSongLocal(room.currentSongId, room.currentSongTitle, room.currentSongArtist, room.currentTime || 0, room.isPlaying);
+                        }
+                        showToast(`Đã khôi phục phiên phòng nghe chung: "${room.name || 'Phòng Nghe Chung'}"`, 'info');
+                    }
+                } else {
+                    localStorage.removeItem('activeRoomId');
+                    localStorage.removeItem('activeRoomTab');
+                }
+            } catch (err) {
+                console.error('Không thể kiểm tra phòng đang hoạt động:', err);
+            }
+        }
+
+        function cleanupRoom() {
+            if (stompClient && stompClient.connected) {
+                try { stompClient.disconnect(); } catch (e) {}
+            }
+            currentRoom = null;
+            stompClient = null;
+            localStorage.removeItem('activeRoomId');
+            localStorage.removeItem('activeRoomTab');
+            const banner = document.getElementById('autoplayBanner');
+            if (banner) banner.remove();
+            renderSyncRoomView();
         }
 
         // ================= DRAG & DROP =================

@@ -35,11 +35,19 @@ class SongMultiFormatTest {
     @Autowired
     private SongRepository songRepository;
 
+    @Autowired
+    private com.example.musicstream.repository.FavoriteSongRepository favoriteSongRepository;
+
+    @Autowired
+    private com.example.musicstream.repository.PlaylistRepository playlistRepository;
+
     private MockMvc mockMvc;
     private String token;
 
     @BeforeEach
     void setUp() throws Exception {
+        playlistRepository.deleteAll();
+        favoriteSongRepository.deleteAll();
         songRepository.deleteAll();
         userRepository.deleteAll();
 
